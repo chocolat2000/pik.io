@@ -3,7 +3,7 @@ var nacl 		= require('js-nacl').instantiate();
 var simplesmtp	= require('simplesmtp');
 var mailparser 	= require('mailparser').MailParser;
 
-var domains = ['pmail.io'];
+var domains = ['pik.io'];
 var smtp = simplesmtp.createServer({
 	name: require('os').hostname(),
 	SMTPBanner: 'hello boy !',
