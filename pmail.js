@@ -112,12 +112,13 @@ app
 		});
 	})
 	.get('/sents', function(req, res) {
-		if(!req.query.hasOwnProperty('username')) {
+		var request = tools.decodeRequest(req);
+		if(!request || !request.hasOwnProperty('username')) {
 			res.send({sents: new Array()});
 			return;
 		}
-		var limit = req.query.limit || 20;
-		inboxes.query({limit:limit,key:[req.query.username,'sent'],descending:true}, function(err, results) {
+		var limit = request.limit || 20;
+		inboxes.query({limit:limit,key:[request.username,'sent'],descending:true}, function(err, results) {
 			var keys = new Array();
 			for(id in results) {
 				keys.push(results[id].id);
@@ -130,7 +131,7 @@ app
 						sents.sents.push(results[id].value);
 					}
 				}
-				res.send(sents);
+				res.send(tools.encodeResponse(req,sents));
 			});
 		});
 	})

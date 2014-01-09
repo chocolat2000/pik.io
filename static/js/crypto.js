@@ -111,7 +111,7 @@ var decodeMail = function(mails) {
 			if(d_mail.to && d_mail.to.length > 0) {
 				mail.to = d_mail.to;
 			}
-			if(d_mail.headers.date) {
+			if(d_mail.headers && d_mail.headers.date) {
 				mail.date = d_mail.headers.date;
 			}
 			mail.visible = true;
@@ -142,7 +142,8 @@ var decodeResponse = function(res) {
 }
 
 var newMail = function(mail) {
-	if(!mail || !mail.to || !PMail.sk) return;
+	var deferred = $.Deferred();
+	if(!mail || !mail.to || !PMail.sk) deferred.reject();
 	var to = new Array();
 	for(var i = 0; i<mail.to.length; i++) {
 		to.push(mail.to[i].address);
@@ -181,9 +182,13 @@ var newMail = function(mail) {
 			data: JSON.stringify({req:encodeRequest({mails:mails})})
 		})
 		.done(function(data) {
-
+			deferred.resolve();
+		})
+		.fail(function(err) {
+			deferred.reject();
 		});
 	});
+	return deferred;
 };
 
 var encodeRequest = function(req) {

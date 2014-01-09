@@ -144,6 +144,7 @@ PMail.InboxSerializer = DS.RESTSerializer.extend({
 
 });
 
+
 PMail.InboxMailRoute = Em.Route.extend({
 	beforeModel: function() {
 		if(!PMail.sk) this.transitionTo('login');
@@ -154,9 +155,21 @@ PMail.InboxMailRoute = Em.Route.extend({
 });
 
 PMail.SentRoute = Em.Route.extend({
-	model: function() {
-		return this.store.find('sent',{limit:10,username:PMail.username});
+	beforeModel: function() {
+		if(!PMail.sk) this.transitionTo('login');
 	},
+	model: function() {
+		return this.store.find('sent',{req:encodeRequest({limit:10,username:PMail.username})});
+	},
+});
+
+PMail.SentSerializer = DS.RESTSerializer.extend({
+	normalizePayload: function(type, payload) {
+		var mails = decodeResponse(payload);
+		decodeMail(mails.sents);
+		return mails;
+	}
+
 });
 
 Ember.Handlebars.helper('maillist', function(value, options) {
@@ -176,8 +189,9 @@ PMail.ComposeController = Ember.ObjectController.extend({
 	toInError: false,
 	actions: {
 		send: function(evt) {
-			this.set('toInError', false);
-			var to = this.get('to');
+			var controller = this;
+			controller.set('toInError', false);
+			var to = controller.get('to');
 			if(to && to.length > 0) {
 				to = to.split(',');
 				for(var i = 0; i<to.length; i++) {
@@ -187,12 +201,20 @@ PMail.ComposeController = Ember.ObjectController.extend({
 				newMail({
 					to:to,
 					from:[{address:PMail.username}],
-					subject:this.get('subject'),
-					text:this.get('body')
+					subject:controller.get('subject'),
+					text:controller.get('body'),
+					headers:{date:new Date()}
+				})
+				.done(function() {
+					controller.set('to', null);
+					controller.set('subject', null);
+					controller.set('body',null);
+					controller.transitionToRoute('inbox');
 				});
+
 			}
 			else {
-				this.set('toInError', true);
+				controller.set('toInError', true);
 			}
 		}
 	}
