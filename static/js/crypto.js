@@ -15,13 +15,15 @@ var incNonce = function(nonce) {
 
 var joinUser = function(username,password) {
 	var keypair = nacl.crypto_box_keypair();
+	var signpair = nacl.crypto_sign_keypair();
 	var nonce = nacl.crypto_box_random_nonce();
 	var salt = nacl.random_bytes(16);
 
 	var k = scrypt.crypto_scrypt(scrypt.encode_utf8(password), salt, 65536, 8, 1, 32);
 
 	var n = nacl.crypto_secretbox_random_nonce();
-	var c = nacl.crypto_secretbox(keypair.boxSk,n,k);
+	var sk = nacl.to_hex(keypair.boxSk) + ':' + nacl.to_hex(signpair.signSk);
+	sk = nacl.crypto_secretbox(nacl.encode_latin1(sk),n,k);
 
 	var retVal = null;
 
@@ -34,16 +36,22 @@ var joinUser = function(username,password) {
 			salt: nacl.to_hex(salt),
 			nonce: nacl.to_hex(n),
 			pk: nacl.to_hex(keypair.boxPk),
-			sk: nacl.to_hex(c)
+			signpk: nacl.to_hex(signpair.signPk),
+			sk: nacl.to_hex(sk)
 		})
 	})
 	.done(function(data) {
-		if(data.status === 'OK' && data.serverPk) {
+		if(data.hasOwnProperty('res')) {
+			var sessionPk = nacl.from_hex(data.res.session.pk);
+			var sessionKey = nacl.crypto_box_precompute(sessionPk,keypair.boxSk);
+			var sessionNonce = nacl.from_hex(data.res.session.sessNonce);
+			var sNonce = nacl.from_hex(data.res.session.nonce);
+			sessionNonce = nacl.crypto_box_open_precomputed(sessionNonce,sNonce,sessionKey);
 			retVal = {
-				serverPk: nacl.from_hex(data.serverPk),
-				pk: keypair.boxPk,
 				sk: keypair.boxSk,
-				sessionNonce: nacl.fom_hex(data.sessionNonce)
+				signSk: signpair.signSk,
+				sessionNonce: sessionNonce,
+				sessionKey: sessionKey
 			};
 		}
 
@@ -59,7 +67,7 @@ var loginUser = function(username,password) {
 		async: false
 	})
 	.done(function(data) {
-		if(data.status === 'OK' && data.res) {
+		if(data.hasOwnProperty('res')) {
 			var nonce = nacl.from_hex(data.res.user.nonce);
 			var salt = nacl.from_hex(data.res.user.salt);
 			var pk = nacl.from_hex(data.res.user.pk);
@@ -70,10 +78,14 @@ var loginUser = function(username,password) {
 			var k = scrypt.crypto_scrypt(scrypt.encode_utf8(password), salt, 65536, 8, 1, 32);
 			try {
 				sk = nacl.crypto_secretbox_open(sk,nonce,k);
+				sk = nacl.decode_latin1(sk).split(':');
+				var signSk = nacl.from_hex(sk[1]);
+				sk = nacl.from_hex(sk[0]);
 				var sessionKey = nacl.crypto_box_precompute(sessionPk,sk);
 				sessionNonce = nacl.crypto_box_open_precomputed(sessionNonce,sNonce,sessionKey);
 				retVal = {
 					sk: sk,
+					signSk: signSk,
 					sessionNonce: sessionNonce,
 					sessionKey: sessionKey
 				};
@@ -98,12 +110,12 @@ var decodeMail = function(mails) {
 			var message = nacl.crypto_box_open(body,nonce,pk,PMail.sk);
 			var d_mail = JSON.parse(nacl.decode_utf8(message));
 			mail.subject = d_mail.subject || 'No subject';
-			//if(d_mail.html) {
-			//	mail.body = d_mail.html.split(/(<body[^>]*>|<\/body>)/ig)[2];
-			//}
-			//else {
-				mail.body = d_mail.text || '';
-			//}
+			if(d_mail.html) {
+				mail.body = ($(document.createElement('div')).append($.parseHTML(d_mail.html))).html();
+			}
+			else {
+				mail.body = ('<pre>'+d_mail.text+'</pre>') || '';
+			}
 
 			if(d_mail.from && d_mail.from.length > 0) {
 				mail.from = d_mail.from;
@@ -143,7 +155,7 @@ var decodeResponse = function(res) {
 
 var newMail = function(mail) {
 	var deferred = $.Deferred();
-	if(!mail || !mail.to || !PMail.sk) deferred.reject();
+	if(!mail || !mail.to || !PMail.signSk) deferred.reject();
 	var to = new Array();
 	for(var i = 0; i<mail.to.length; i++) {
 		to.push(mail.to[i].address);
@@ -151,7 +163,6 @@ var newMail = function(mail) {
 	$.ajax({
 		url: '/users',
 		type: 'GET',
-		async: false,
 		data: {
 			req:encodeRequest({users:to})
 		}
@@ -166,11 +177,14 @@ var newMail = function(mail) {
 				var sessionKeys = nacl.crypto_box_keypair_from_seed(nacl.random_bytes(64));
 				var nonce = nacl.crypto_box_random_nonce();
 				var pk = nacl.from_hex(users[user].pk);
+				var sign_keys = nacl.crypto_sign_keypair();
+				var signature = nacl.crypto_sign(message,sign_keys.signSk);
 				mails.push({
 					username:user,
 					pk:nacl.to_hex(sessionKeys.boxPk),
 					nonce:nacl.to_hex(nonce),
-					body:nacl.to_hex(nacl.crypto_box(message,nonce,pk,sessionKeys.boxSk))
+					body:nacl.to_hex(nacl.crypto_box(message,nonce,pk,sessionKeys.boxSk)),
+					sign:nacl.to_hex(nacl.crypto_sign(message,PMail.signSk))
 				});
 			}
 		}
@@ -178,7 +192,6 @@ var newMail = function(mail) {
 			url: '/send',
 			type: 'POST',
 			contentType: 'application/json',
-			async: false,
 			data: JSON.stringify({req:encodeRequest({mails:mails})})
 		})
 		.done(function(data) {

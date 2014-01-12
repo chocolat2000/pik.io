@@ -58,6 +58,7 @@ PMail.LoginRoute = Em.Route.extend({
 				PMail.sk = retVal.sk;
 				PMail.sessionNonce = retVal.sessionNonce;
 				PMail.sessionKey = retVal.sessionKey;
+				PMail.signSk = retVal.signSk;
 				controller.set('isLoggedIn',true);
 				this.transitionTo('inbox');
 			}
@@ -74,11 +75,12 @@ PMail.LoginRoute = Em.Route.extend({
 				return;
 			}
 			var retVal = joinUser(controller.get('username'),controller.get('password'));
-			if(retVal && retVal.pk && retVal.sk && retVal.serverPk) {
+			if(retVal && retVal.sk && retVal.sessionKey) {
 				PMail.username = controller.get('username');
-				PMail.serverPk = retVal.serverPk;
-				PMail.pk = retVal.pk;
 				PMail.sk = retVal.sk;
+				PMail.sessionNonce = retVal.sessionNonce;
+				PMail.sessionKey = retVal.sessionKey;
+				PMail.signSk = retVal.signSk;
 				controller.set('isLoggedIn',true);
 				this.transitionTo('inbox');
 			}
@@ -154,6 +156,24 @@ PMail.InboxMailRoute = Em.Route.extend({
 	}
 });
 
+PMail.InboxMailController = Ember.ObjectController.extend({
+	needs: 'compose',
+	replyTo: 'controllers.compose.to',
+	replySubject: 'controllers.compose.subject',
+	actions: {
+		reply: function() {
+			this.set('replyTo','toto');
+			this.transitionToRoute('compose');
+		},
+		replyAll: function() {
+
+		},
+		forward: function() {
+
+		}
+	}
+});
+
 PMail.SentRoute = Em.Route.extend({
 	beforeModel: function() {
 		if(!PMail.sk) this.transitionTo('login');
@@ -179,13 +199,18 @@ Ember.Handlebars.helper('maillist', function(value, options) {
 PMail.ComposeRoute = Em.Route.extend({
 	beforeModel: function() {
 		if(!PMail.sk) this.transitionTo('login');
-	},
+	}
+});
+
+PMail.ComposeView = Ember.View.extend({
+	didInsertElement: function() {
+		Ember.$('#inputBody').cleditor();
+	}
 });
 
 PMail.ComposeController = Ember.ObjectController.extend({
 	to: null,
 	subject: null,
-	body: null,
 	toInError: false,
 	actions: {
 		send: function(evt) {
@@ -197,18 +222,18 @@ PMail.ComposeController = Ember.ObjectController.extend({
 				for(var i = 0; i<to.length; i++) {
 					to[i] = {address:to[i].trim()};
 				}
-
+				var body = Ember.$('#inputBody').cleditor()[0].doc.body;
 				newMail({
 					to:to,
 					from:[{address:PMail.username}],
 					subject:controller.get('subject'),
-					text:controller.get('body'),
+					text:body.innerText,
+					html:body.innerHTML,
 					headers:{date:new Date()}
 				})
 				.done(function() {
 					controller.set('to', null);
 					controller.set('subject', null);
-					controller.set('body',null);
 					controller.transitionToRoute('inbox');
 				});
 

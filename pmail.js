@@ -28,31 +28,15 @@ app
 		if(req.body && req.body.nonce && req.body.pk && req.body.sk) {
 			if(req.params.username.length > 2) {
 				usersdb.set(req.params.username, req.body, function(err, result) {
-					var conn = tools.newConnection(req.body);
-					req.session.nonce = conn.nonce;
-					req.session.pk = conn.pk;
-					res.send({res:tools.encodeResponse(req,
-						{
-							status: 'OK',
-							message: 'Welcome ' + req.params.username,
-							serverPk: conn.serverPk,
-							sessionNonce: tools.nacl.to_hex(conn.nonce)
-						})
-					});
+					res.send({status: 'OK', res:tools.newConnection(req,req.body)});
 				});
 			}
 			else {
-				res.send({
-					status: 'Failed',
-					message: 'Something went wrong'
-				});
+				res.send({status: 'NOK'});
 			}
 		}
 		else {
-			res.send({
-				status: 'Failed',
-				message: 'Something went wrong'
-			});
+			res.send({status: 'NOK'});
 		}
 		
 	})
