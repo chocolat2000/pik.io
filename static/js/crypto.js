@@ -157,8 +157,25 @@ var newMail = function(mail) {
 	var deferred = $.Deferred();
 	if(!mail || !mail.to || !PMail.signSk) deferred.reject();
 	var to = new Array();
+	var mails = new Array();
+	var fullPMail = new RegExp('^(.+)@'+PMail.domain+'$','i');
+	var isMail = new RegExp('^(.+)@(.+)$','i');
+
 	for(var i = 0; i<mail.to.length; i++) {
-		to.push(mail.to[i].address);
+		if(isMail.exec(mail.to[i].address)) {
+			var fullTest = fullPMail.exec(mail.to[i].address);
+			if(fullTest) {
+				to.push(fullTest[1]);
+			}
+			else {
+				mails.push({
+					body:JSON.stringify(mail)
+				})
+			}
+		}
+		else {
+			to.push(mail.to[i].address);
+		}
 	}
 	$.ajax({
 		url: '/users',
@@ -170,7 +187,6 @@ var newMail = function(mail) {
 	.then(function(data) {
 		var users = decodeResponse(data).users;
 		var message = nacl.encode_utf8(JSON.stringify(mail));
-		var mails = new Array();
 		for(var i=0; i<to.length; i++) {
 			var user = to[i];
 			if(users[user]) {

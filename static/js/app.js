@@ -1,5 +1,6 @@
 window.PMail 	= Ember.Application.create();
 PMail.searchindex	= null;
+PMail.domain 	= 'pik.io';
 
 PMail.serverPk 	= new Uint8Array([176, 198, 150, 232, 87, 89, 72, 75, 206, 71, 27, 189, 209, 72, 184, 102, 41, 157, 252, 208, 107, 67, 140, 223, 246, 177, 115, 176, 199, 254, 19, 84]);
 PMail.username 	= null;

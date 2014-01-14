@@ -8,7 +8,9 @@
     "couchbase": "1.1.x",
     "js-nacl": "0.5.x",
     "simplesmtp": "0.3.x",
-    "mailparser": "0.3.x"
+    "mailparser": "0.3.x",
+    "mailcomposer": "0.2.x",
+    "newrelic": "1.2.x"
   },
   "engines" : {
     "node" : "0.10.x"

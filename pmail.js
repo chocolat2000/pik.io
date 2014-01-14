@@ -1,11 +1,17 @@
+require('newrelic');
+
 var express		= require('express');
 var couchbase	= require('couchbase');
 var tools 		= require('./pmail-tools');
-
+var simplesmtp	= require('simplesmtp');
+var MailComposer = require('mailcomposer').MailComposer;
 
 var app 	= express();
 var usersdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
 var mailsdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
+
+var mailPool = simplesmtp.createClientPool(25);
+var domains = ['pik.io'];
 
 var inboxes = mailsdb.view('inboxes','by_username');
 
@@ -127,15 +133,39 @@ app
 			res.send({status: 'OK'});
 			
 			var mails = tools.decodeRequest(req).mails;
+			var mailcomposer = new MailComposer();
 			for(id in mails) {
-				mails[id].folder = 'inbox';
-				mailsdb.set((+new Date).toString(36)+'-pmailInt',mails[id],
-					function(err, result) {
-						if(err) {
-							console.log(err);
-						}
+				if(mails[id].hasOwnProperty('username')) {
+					mails[id].folder = 'inbox';
+					mailsdb.set((+new Date).toString(36)+'-pmailInt',mails[id],
+						function(err, result) {
+							if(err) {
+								console.log(err);
+							}
+						});
+				}
+				else {
+					var mail = JSON.parse(mails[id].body);
+					var to = [];
+					var from = [];
+					for(i in mail.to) {
+						to.push(mail.to[i].address);
+					}
+					for(i in mail.from) {
+						from.push(mail.from[i].address+'@'+domains[0]);
+					}
+					var message = new MailComposer();
+					message.setMessageOption({
+						from: from.join(', '),
+						to: to.join(', '),
+						text: mail.text,
+						html: mail.html
 					});
-
+					console.log(message);
+					mailPool.sendMail(message, function(error, responseObj) {
+						console.log(error);
+					});
+				}
 			}
 		}
 	})
