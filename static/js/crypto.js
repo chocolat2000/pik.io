@@ -51,7 +51,8 @@ var joinUser = function(username,password) {
 				sk: keypair.boxSk,
 				signSk: signpair.signSk,
 				sessionNonce: sessionNonce,
-				sessionKey: sessionKey
+				sessionKey: sessionKey,
+				k: k
 			};
 		}
 
@@ -75,6 +76,11 @@ var loginUser = function(username,password) {
 			var sessionNonce = nacl.from_hex(data.res.session.sessNonce);
 			var sessionPk = nacl.from_hex(data.res.session.pk);
 			var sNonce = nacl.from_hex(data.res.session.nonce);
+			var p = data.res.user.p || null;
+			if(p && p.hasOwnProperty('nonce') && p.hasOwnProperty('data')) {
+				p.nonce = nacl.from_hex(p.nonce);
+				p.data = nacl.from_hex(p.data);
+			}
 			var k = scrypt.crypto_scrypt(scrypt.encode_utf8(password), salt, 65536, 8, 1, 32);
 			try {
 				sk = nacl.crypto_secretbox_open(sk,nonce,k);
@@ -83,11 +89,16 @@ var loginUser = function(username,password) {
 				sk = nacl.from_hex(sk[0]);
 				var sessionKey = nacl.crypto_box_precompute(sessionPk,sk);
 				sessionNonce = nacl.crypto_box_open_precomputed(sessionNonce,sNonce,sessionKey);
+				if(p) {
+					p = nacl.decode_utf8(nacl.crypto_secretbox_open(p.data,p.nonce,k));
+				}
 				retVal = {
 					sk: sk,
 					signSk: signSk,
 					sessionNonce: sessionNonce,
-					sessionKey: sessionKey
+					sessionKey: sessionKey,
+					k: k,
+					p: p
 				};
 			}
 			catch(err) {
@@ -99,6 +110,26 @@ var loginUser = function(username,password) {
 	return retVal;
 
 };
+
+var updateUser = function(fullname) {
+	var retVal = null;
+	var nonce = nacl.crypto_box_random_nonce();
+	var p = {
+		nonce: nacl.to_hex(nonce)
+	};
+	var	data = JSON.stringify({fullname: fullname});
+	data = nacl.crypto_secretbox(nacl.encode_utf8(fullname),nonce,PMail.k);
+	p.data = nacl.to_hex(data);
+	$.ajax({
+		url: '/login/'+PMail.username,
+		type: 'PUT',
+		async: false,
+		contentType: 'application/json',
+		data: JSON.stringify({req:encodeRequest({p:p})})
+	}).done(function(data) {
+
+	});
+}
 
 var decodeMail = function(mails) {
 	if(!PMail.sk) return;

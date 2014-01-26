@@ -35,7 +35,9 @@ app
 			if(req.params.username.length > 2) {
 				usersdb.set(req.params.username, req.body, function(err, result) {
 					res.send({status: 'OK', res:tools.newConnection(req,req.body)});
+					req.session.user = req.params.username;
 				});
+
 			}
 			else {
 				res.send({status: 'NOK'});
@@ -52,12 +54,34 @@ app
 		usersdb.get(req.params.username, function(err,result) {
 			if(!err && result.value) {
 				res.send({status: 'OK', res:tools.newConnection(req,result.value)});
+				req.session.user = req.params.username;
 			}
 			else {
 				res.send({status: 'NOK'});
 			}
 		});
 		
+	})
+	.put('/login/:username', function(req, res){
+		if(req.session.user !== req.params.username) {
+			res.send({status: 'NOK'});
+		}
+		else {
+			var request = tools.decodeRequest(req);
+			usersdb.get(req.session.user, function(err,result) {
+				result.value.p = request.p;
+				usersdb.set(req.session.user, result.value, function(err, result) {
+					if(!err) {
+						res.send({status: 'OK'});
+					}
+					else {
+						res.send({status: 'NOK'});
+					}
+				});
+				
+				
+			});
+		}
 	})
 	.get('/users', function(req, res) {
 		var request = tools.decodeRequest(req);

@@ -2,15 +2,17 @@ window.PMail 	= Ember.Application.create();
 PMail.searchindex	= null;
 PMail.domain 	= 'pik.io';
 
-PMail.serverPk 	= new Uint8Array([176, 198, 150, 232, 87, 89, 72, 75, 206, 71, 27, 189, 209, 72, 184, 102, 41, 157, 252, 208, 107, 67, 140, 223, 246, 177, 115, 176, 199, 254, 19, 84]);
+//PMail.serverPk 	= new Uint8Array([176, 198, 150, 232, 87, 89, 72, 75, 206, 71, 27, 189, 209, 72, 184, 102, 41, 157, 252, 208, 107, 67, 140, 223, 246, 177, 115, 176, 199, 254, 19, 84]);
 PMail.username 	= null;
 PMail.sk 		= null;
 PMail.sessionNonce = null;
 PMail.sessionKey = null;
+PMail.k 		= null;
 
 PMail.Router.map(function () {
   this.route('login');
   this.route('compose');
+  this.route('profile');
   this.resource('inbox', function () {
   	this.route('mail', {path: '/:mail_id'});
   });
@@ -25,11 +27,7 @@ PMail.Router.map(function () {
 
 PMail.ApplicationController = Ember.ObjectController.extend({
 	isLoggedIn: false,
-	actions: {
-		newMail: function() {
-			this.store.createRecord('sent',{subject:'hihihi'});
-		}
-	}
+	fullname: ''
 });
 
 
@@ -40,6 +38,7 @@ PMail.LoginController = Ember.ObjectController.extend({
 	repeat: null,
 	isJoining: false,
 	errorMessage: null,
+	fullname: Ember.computed.alias('controllers.application.fullname'),
 	isLoggedIn: Ember.computed.alias('controllers.application.isLoggedIn'),
 	actions: {
 		changeJoin : function() {
@@ -59,7 +58,9 @@ PMail.LoginRoute = Em.Route.extend({
 				PMail.sk = retVal.sk;
 				PMail.sessionNonce = retVal.sessionNonce;
 				PMail.sessionKey = retVal.sessionKey;
+				PMail.k = retVal.k;
 				PMail.signSk = retVal.signSk;
+				controller.set('fullname',retVal.p);
 				controller.set('isLoggedIn',true);
 				this.transitionTo('inbox');
 			}
@@ -81,6 +82,7 @@ PMail.LoginRoute = Em.Route.extend({
 				PMail.sk = retVal.sk;
 				PMail.sessionNonce = retVal.sessionNonce;
 				PMail.sessionKey = retVal.sessionKey;
+				PMail.k = retVal.k;
 				PMail.signSk = retVal.signSk;
 				controller.set('isLoggedIn',true);
 				this.transitionTo('inbox');
@@ -158,12 +160,13 @@ PMail.InboxMailRoute = Em.Route.extend({
 });
 
 PMail.InboxMailController = Ember.ObjectController.extend({
-	needs: 'compose',
-	replyTo: 'controllers.compose.to',
-	replySubject: 'controllers.compose.subject',
 	actions: {
 		reply: function() {
-			this.set('replyTo','toto');
+			PMail.composeMail = {
+				to: this.get('model.from'),
+				subject: this.get('model.subject'),
+				body: this.get('model.body')
+			};
 			this.transitionToRoute('compose');
 		},
 		replyAll: function() {
@@ -200,24 +203,38 @@ Ember.Handlebars.helper('maillist', function(value, options) {
 PMail.ComposeRoute = Em.Route.extend({
 	beforeModel: function() {
 		if(!PMail.sk) this.transitionTo('login');
+	},
+	model: function() {
+		var model = Ember.Object.create({
+			to: '',
+			subject: '',
+			body: ''
+		});
+		if(PMail.composeMail) {
+			var to = PMail.composeMail.to || '';
+			model.setProperties({
+				to: to[0].address || '',
+				subject: PMail.composeMail.subject || '',
+				body: PMail.composeMail.body || ''
+			});
+		}
+		return model;
 	}
 });
 
 PMail.ComposeView = Ember.View.extend({
 	didInsertElement: function() {
-		Ember.$('#inputBody').cleditor();
+		Ember.$('#inputBody').val(this.get('controller.model.body')).cleditor();
 	}
 });
 
 PMail.ComposeController = Ember.ObjectController.extend({
-	to: null,
-	subject: null,
 	toInError: false,
 	actions: {
 		send: function(evt) {
 			var controller = this;
-			controller.set('toInError', false);
-			var to = controller.get('to');
+			this.set('toInError', false);
+			var to = controller.get('model.to');
 			if(to && to.length > 0) {
 				to = to.split(',');
 				for(var i = 0; i<to.length; i++) {
@@ -227,14 +244,15 @@ PMail.ComposeController = Ember.ObjectController.extend({
 				newMail({
 					to:to,
 					from:[{address:PMail.username}],
-					subject:controller.get('subject'),
+					subject:controller.get('model.subject'),
 					text:body.innerText,
 					html:body.innerHTML,
 					headers:{date:new Date()}
 				})
 				.done(function() {
-					controller.set('to', null);
-					controller.set('subject', null);
+					if(PMail.composeMail) {
+						delete PMail.composeMail;
+					}
 					controller.transitionToRoute('inbox');
 				});
 
@@ -243,6 +261,24 @@ PMail.ComposeController = Ember.ObjectController.extend({
 				controller.set('toInError', true);
 			}
 		}
+	}
+});
+
+PMail.ProfileController = Ember.ObjectController.extend({
+	needs: 'application',
+	fullname: Ember.computed.alias('controllers.application.fullname'),
+	actions: {
+		send: function(evt) {
+			var fullname = this.get('fullname');
+			if(fullname && fullname.length > 2)
+				updateUser(fullname);
+		}
+	}
+});
+
+PMail.ProfileRoute = Em.Route.extend({
+	beforeModel: function() {
+		if(!PMail.sk) this.transitionTo('login');
 	}
 });
 
@@ -284,4 +320,10 @@ PMail.Sent = DS.Model.extend({
 	to: DS.attr(),
 	date: DS.attr('date'),
 	visible: DS.attr('boolean')
+});
+
+PMail.Compose = DS.Model.extend({
+	body: DS.attr(),
+	subject: DS.attr(),
+	to: DS.attr()
 });
