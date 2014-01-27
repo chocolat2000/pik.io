@@ -1,3 +1,4 @@
+"use strict";
 var scrypt 	= scrypt_module_factory(134217728);
 var nacl 	= nacl_factory.instantiate();
 
@@ -145,7 +146,7 @@ var decodeMail = function(mails) {
 				mail.body = ($(document.createElement('div')).append($.parseHTML(d_mail.html))).html();
 			}
 			else {
-				mail.body = ('<pre>'+d_mail.text+'</pre>') || '';
+				mail.body = (d_mail.text) || '';
 			}
 
 			if(d_mail.from && d_mail.from.length > 0) {

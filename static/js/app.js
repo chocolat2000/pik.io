@@ -1,3 +1,4 @@
+"use strict";
 window.PMail 	= Ember.Application.create();
 PMail.searchindex	= null;
 PMail.domain 	= 'pik.io';
@@ -162,18 +163,52 @@ PMail.InboxMailRoute = Em.Route.extend({
 PMail.InboxMailController = Ember.ObjectController.extend({
 	actions: {
 		reply: function() {
+			var from = this.get('model.from');
+			var subject = this.get('model.subject');
+			var body = this.get('model.body');			
+
 			PMail.composeMail = {
-				to: this.get('model.from'),
-				subject: this.get('model.subject'),
-				body: this.get('model.body')
+				to: from[0].address,
+				subject: /^re:(.*)/i.exec(subject) ? subject : "Re: "+subject,
+				body: "<br><hr>"+from[0].address+" wrote:<div>"+body+"</div>"
 			};
 			this.transitionToRoute('compose');
 		},
 		replyAll: function() {
+			var to = [this.get('model.from')[0].address];
+			var from = this.get('model.from');
+			var subject = this.get('model.subject');
+			var body = this.get('model.body');	
+			var _to = this.get('model.to');
+			for(var i in _to) {
+				if(_to.hasOwnProperty(i)) {
+					var address = _to[i].address;
+					if(to.indexOf(address) === -1) {
+						to.push(address)
+					}
+				}
+			}
+			to = to.join(', ');		
+
+			PMail.composeMail = {
+				to: to,
+				subject: /^re:(.*)/i.exec(subject) ? subject : "Re: "+subject,
+				body: "<br><hr>"+from[0].address+" wrote:<div>"+body+"</div>"
+			};
+			this.transitionToRoute('compose');
 
 		},
 		forward: function() {
+			var from = this.get('model.from');
+			var subject = this.get('model.subject');
+			var body = this.get('model.body');			
 
+			PMail.composeMail = {
+				to: '',
+				subject: /^fw:(.*)/i.exec(subject) ? subject : "Fw: "+subject,
+				body: "<br><hr>"+from[0].address+" wrote:<div>"+body+"</div>"
+			};
+			this.transitionToRoute('compose');
 		}
 	}
 });
@@ -211,9 +246,8 @@ PMail.ComposeRoute = Em.Route.extend({
 			body: ''
 		});
 		if(PMail.composeMail) {
-			var to = PMail.composeMail.to || '';
 			model.setProperties({
-				to: to[0].address || '',
+				to: PMail.composeMail.to || '',
 				subject: PMail.composeMail.subject || '',
 				body: PMail.composeMail.body || ''
 			});
@@ -224,7 +258,7 @@ PMail.ComposeRoute = Em.Route.extend({
 
 PMail.ComposeView = Ember.View.extend({
 	didInsertElement: function() {
-		Ember.$('#inputBody').val(this.get('controller.model.body')).cleditor();
+		Ember.$('#inputBody').val(this.get('controller.model.body')).cleditor().focus();
 	}
 });
 
@@ -320,10 +354,4 @@ PMail.Sent = DS.Model.extend({
 	to: DS.attr(),
 	date: DS.attr('date'),
 	visible: DS.attr('boolean')
-});
-
-PMail.Compose = DS.Model.extend({
-	body: DS.attr(),
-	subject: DS.attr(),
-	to: DS.attr()
 });
