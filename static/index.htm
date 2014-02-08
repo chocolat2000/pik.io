@@ -107,11 +107,16 @@
 			</div>
 		</p>
 		<ul class="list-unstyled">
-		{{#each}}
-			<li>{{#link-to "inbox.mail" this}}{{subject}}{{/link-to}}</li>
-		{{else}}
-			No mails !
-		{{/each}}
+			{{#each}}
+			<div class="row">
+				<li>
+					<div class="col-md-8">{{#link-to "inbox.mail" this}}{{truncate subject}}{{/link-to}}</div>
+					<div class="col-md-1"><a href="#" {{action 'delete' this}} class="fui-cross"></a></div>
+				</li>
+			</div>
+			{{else}}
+				No mails !
+			{{/each}}
 		</ul>
 	</div>
 	<div class="col-md-8">
@@ -124,6 +129,59 @@
 <p>Please Wait</p>
 </script>
 <script type="text/x-handlebars" data-template-name="inbox/mail">
+<dl class="dl-horizontal">
+	<dt>From</dt>
+	<dd>{{maillist from}}</dd>
+	<dt>To</dt>
+	<dd>{{maillist to}}</dd>
+	<dt>Date</dt>
+	<dd>{{date}}</dd>
+</dl>
+<div class="row">
+	<div class="col-md-2">
+		<a href="#" {{action 'reply'}}><span class="glyphicon glyphicon-chevron-left"></span> Reply</a>
+	</div>
+	<div class="col-md-3">
+		<a href="#" {{action 'replyAll'}}><span class="glyphicon glyphicon-chevron-left"></span><span class="glyphicon glyphicon-chevron-left"></span> Reply All</a>
+	</div>
+	<div class="col-md-2">
+		<a href="#" {{action 'forward'}}><span class="glyphicon glyphicon-chevron-right"></span> Forward</a>
+	</div>
+</div>
+<div class="panel panel-default">
+	<div class="panel-heading"><h4 class="panel-title">{{subject}}</h4></div>
+	<div class="panel-body">{{{body}}}</div>
+</div>
+</script>
+<script type="text/x-handlebars" data-template-name="sent">
+<div class="row">
+	<div class="col-md-3">
+		<h3>Inbox</h3>
+		<p>
+			<div class="form-group">
+			{{input type="search"
+					class="form-control input-sm"
+					value=searchTXT
+					size="50" placeholder="Search..."
+					action="search"
+			}}
+			{{view	PMail.ClearSearchView}}
+			</div>
+		</p>
+		<ul class="list-unstyled">
+		{{#each}}
+			<li>{{#link-to "sent.mail" this}}{{subject}}{{/link-to}}</li>
+		{{else}}
+			No mails !
+		{{/each}}
+		</ul>
+	</div>
+	<div class="col-md-8">
+		{{outlet}}
+	</div>
+</div>
+</script>
+<script type="text/x-handlebars" data-template-name="sent/mail">
 <dl class="dl-horizontal">
 	<dt>From</dt>
 	<dd>{{maillist from}}</dd>

@@ -1,5 +1,3 @@
-require('newrelic');
-
 var express		= require('express');
 var couchbase	= require('couchbase');
 var tools 		= require('./pmail-tools');
@@ -83,6 +81,93 @@ app
 			});
 		}
 	})
+	.post('/', function(req,res) {
+		var request = tools.decodeRequest(req);
+		var response = {message: 'Internal Error'};
+		if(!request || !request.hasOwnProperty('req')) {
+			response.message = 'Bad request';
+			res.send(tools.encodeResponse(req,response));
+		}
+		else {
+			switch(request.req) {
+				case 'users' : 
+					var users = new Object();
+					usersdb.getMulti(request.users, {}, function(err, results) {
+						for(user in results) {
+							if(results[user].hasOwnProperty('value')) {
+								users[user] = {pk:results[user].value.pk};
+							}
+						}
+						response.message = 'OK';
+						response.users = users;
+						res.send(tools.encodeResponse(req,response));
+					});
+					break;
+				case 'inboxes' :
+					var limit = request.limit || 20;
+					inboxes.query({limit:limit,key:[req.session.user,'inbox'],descending:true}, function(err, results) {
+						var keys = new Array();
+						for(id in results) {
+							keys.push(results[id].id);
+						}
+						mailsdb.getMulti(keys, {}, function(err, results) {
+							var inboxes = new Array();
+							for(id in results) {
+								if(results[id].value) {
+									results[id].value.id = id;
+									delete(results[id].value.username);
+									inboxes.push(results[id].value);
+								}
+							}
+							response.message = 'OK';
+							response.inboxes = inboxes;
+							res.send(tools.encodeResponse(req,response));
+						});
+					});
+					break;
+				case 'send' :
+					var mails = request.mails;
+					var mailcomposer = new MailComposer();
+					for(id in mails) {
+						if(mails[id].hasOwnProperty('username')) {
+							mails[id].folder = (mails[id].username === req.session.user) ? 'sents' : 'inbox';
+							
+							mailsdb.set((+new Date).toString(36)+'-pmailInt',mails[id],
+								function(err, result) {
+									if(err) {
+										console.log(err);
+									}
+								});
+						}
+						else {
+							var mail = JSON.parse(mails[id].body);
+							var to = [];
+							var from = [];
+							for(i in mail.to) {
+								to.push(mail.to[i].address);
+							}
+							for(i in mail.from) {
+								from.push(mail.from[i].address+'@'+domains[0]);
+							}
+							var message = new MailComposer();
+							message.setMessageOption({
+								from: from.join(', '),
+								to: to.join(', '),
+								text: mail.text,
+								html: mail.html
+							});
+							console.log(message);
+							mailPool.sendMail(message, function(error, responseObj) {
+								console.log(error);
+							});
+						}
+					}
+					response.message = 'OK';
+					res.send(tools.encodeResponse(req,response));
+					break;
+			}
+		}
+	})
 	.get('/users', function(req, res) {
 		var request = tools.decodeRequest(req);
 		if(!request || !request.hasOwnProperty('users')) {
@@ -132,7 +217,7 @@ app
 			return;
 		}
 		var limit = request.limit || 20;
-		inboxes.query({limit:limit,key:[request.username,'sent'],descending:true}, function(err, results) {
+		inboxes.query({limit:limit,key:[request.username,'sents'],descending:true}, function(err, results) {
 			var keys = new Array();
 			for(id in results) {
 				keys.push(results[id].id);
@@ -154,13 +239,13 @@ app
 			res.send(400,'failed');
 		}
 		else {
-			res.send({status: 'OK'});
-			
 			var mails = tools.decodeRequest(req).mails;
+			res.send(tools.encodeResponse(req,{status: 'OK'}));
 			var mailcomposer = new MailComposer();
 			for(id in mails) {
 				if(mails[id].hasOwnProperty('username')) {
-					mails[id].folder = 'inbox';
+					mails[id].folder = (mails[id].username === req.session.user) ? 'sents' : 'inbox';
+					
 					mailsdb.set((+new Date).toString(36)+'-pmailInt',mails[id],
 						function(err, result) {
 							if(err) {
@@ -191,6 +276,7 @@ app
 					});
 				}
 			}
+
 		}
 	})
 	.use(express.static(__dirname + '/static'))

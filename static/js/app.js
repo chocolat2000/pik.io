@@ -109,7 +109,23 @@ PMail.InboxRoute = Em.Route.extend({
 		});
 	},
 	model: function() {
-		return this.store.find('inbox',{req:encodeRequest({limit:10,username:PMail.username})});
+		//return this.store.find('inbox',{req:encodeRequest({limit:10,username:PMail.username})});
+		return Ember.$.ajax({
+			url: '/',
+			type: 'POST',
+			contentType: 'application/json',
+			data: JSON.stringify({
+				req: encodeRequest({
+					req: 'inboxes',
+					limit: 20
+				})
+			})
+		}).then(function(data) {
+			var mails = decodeResponse(data);
+			decodeMail(mails.inboxes);
+			console.log(mails);
+			return mails.inboxes;
+		});
 	},
 	actions: {
 		search: function(evt) {
@@ -138,18 +154,24 @@ PMail.InboxRoute = Em.Route.extend({
 });
 
 PMail.InboxController = Ember.ArrayController.extend({
-	searchTXT:null
+	searchTXT:null,
+	actions: {
+		delete: function(evt) {
+			evt.deleteRecord();
+		}
+	}
 });
-
+/*
 PMail.InboxSerializer = DS.RESTSerializer.extend({
 	normalizePayload: function(type, payload) {
 		var mails = decodeResponse(payload);
+		console.log(mails);
 		decodeMail(mails.inboxes);
 		return mails;
 	}
 
 });
-
+*/
 
 PMail.InboxMailRoute = Em.Route.extend({
 	beforeModel: function() {
@@ -219,7 +241,7 @@ PMail.SentRoute = Em.Route.extend({
 	},
 	model: function() {
 		return this.store.find('sent',{req:encodeRequest({limit:10,username:PMail.username})});
-	},
+	}
 });
 
 PMail.SentSerializer = DS.RESTSerializer.extend({
@@ -235,6 +257,10 @@ Ember.Handlebars.helper('maillist', function(value, options) {
 	return PMail.recipentListToString(value) || 'Unknown';
 });
 
+Ember.Handlebars.helper('truncate', function(value, options) {
+	return (value.length > 30) ? value.slice(0,27)+"...":value;
+});
+
 PMail.ComposeRoute = Em.Route.extend({
 	beforeModel: function() {
 		if(!PMail.sk) this.transitionTo('login');
@@ -245,7 +271,7 @@ PMail.ComposeRoute = Em.Route.extend({
 			subject: '',
 			body: ''
 		});
-		if(PMail.composeMail) {
+		if(PMail.hasOwnProperty('composeMail')) {
 			model.setProperties({
 				to: PMail.composeMail.to || '',
 				subject: PMail.composeMail.subject || '',
@@ -284,7 +310,7 @@ PMail.ComposeController = Ember.ObjectController.extend({
 					headers:{date:new Date()}
 				})
 				.done(function() {
-					if(PMail.composeMail) {
+					if(PMail.hasOwnProperty('composeMail')) {
 						delete PMail.composeMail;
 					}
 					controller.transitionToRoute('inbox');

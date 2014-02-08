@@ -193,6 +193,8 @@ var newMail = function(mail) {
 	var fullPMail = new RegExp('^(.+)@'+PMail.domain+'$','i');
 	var isMail = new RegExp('^(.+)@(.+)$','i');
 
+	to.push(PMail.username);
+
 	for(var i = 0; i<mail.to.length; i++) {
 		if(isMail.exec(mail.to[i].address)) {
 			var fullTest = fullPMail.exec(mail.to[i].address);
@@ -210,11 +212,10 @@ var newMail = function(mail) {
 		}
 	}
 	$.ajax({
-		url: '/users',
-		type: 'GET',
-		data: {
-			req:encodeRequest({users:to})
-		}
+		url: '/',
+		type: 'POST',
+		contentType: 'application/json',
+		data: JSON.stringify({req:encodeRequest({req:'users',users:to})})
 	})
 	.then(function(data) {
 		var users = decodeResponse(data).users;
@@ -237,17 +238,21 @@ var newMail = function(mail) {
 			}
 		}
 		$.ajax({
-			url: '/send',
+			url: '/',
 			type: 'POST',
 			contentType: 'application/json',
-			data: JSON.stringify({req:encodeRequest({mails:mails})})
+			data: JSON.stringify({req:encodeRequest({req:'send',mails:mails})})
 		})
-		.done(function(data) {
-			deferred.resolve();
-		})
-		.fail(function(err) {
+		.then(function(data) {
+			if(decodeResponse(data).message === 'OK')
+				deferred.resolve();
+			else
+				deferred.reject();
+		},function(err) {
 			deferred.reject();
 		});
+	}, function(err) {
+		deferred.reject();
 	});
 	return deferred;
 };
