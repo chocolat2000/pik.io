@@ -94,12 +94,13 @@ var loginUser = function(username,password) {
 					p = nacl.decode_utf8(nacl.crypto_secretbox_open(p.data,p.nonce,k));
 				}
 				retVal = {
+					pk: pk,
 					sk: sk,
 					signSk: signSk,
 					sessionNonce: sessionNonce,
 					sessionKey: sessionKey,
 					k: k,
-					p: p
+					p: JSON.parse(p)
 				};
 			}
 			catch(err) {
@@ -119,14 +120,14 @@ var updateUser = function(fullname) {
 		nonce: nacl.to_hex(nonce)
 	};
 	var	data = JSON.stringify({fullname: fullname});
-	data = nacl.crypto_secretbox(nacl.encode_utf8(fullname),nonce,PMail.k);
+	data = nacl.crypto_secretbox(nacl.encode_utf8(data),nonce,PMail.k);
 	p.data = nacl.to_hex(data);
 	$.ajax({
-		url: '/login/'+PMail.username,
-		type: 'PUT',
+		url: '/',
+		type: 'POST',
 		async: false,
 		contentType: 'application/json',
-		data: JSON.stringify({req:encodeRequest({p:p})})
+		data: JSON.stringify({req:encodeRequest({req:'update',p:p})})
 	}).done(function(data) {
 
 	});
@@ -193,7 +194,7 @@ var newMail = function(mail) {
 	var fullPMail = new RegExp('^(.+)@'+PMail.domain+'$','i');
 	var isMail = new RegExp('^(.+)@(.+)$','i');
 
-	to.push(PMail.username);
+	//to.push(PMail.username);
 
 	for(var i = 0; i<mail.to.length; i++) {
 		if(isMail.exec(mail.to[i].address)) {

@@ -105,7 +105,8 @@ app
 					break;
 				case 'inboxes' :
 					var limit = request.limit || 20;
-					inboxes.query({limit:limit,key:[req.session.user,'inbox'],descending:true}, function(err, results) {
+					inboxes.firstPage({limit:limit,key:[req.session.user,'inbox'],descending:true}, function(err, results, paginator) {
+						req.session.inboxPaginator = paginator;
 						var keys = new Array();
 						for(id in results) {
 							keys.push(results[id].id);
@@ -120,10 +121,35 @@ app
 								}
 							}
 							response.message = 'OK';
+							response.hasNext = paginator.hasNext();
 							response.inboxes = inboxes;
 							res.send(tools.encodeResponse(req,response));
 						});
 					});
+					break;
+				case 'inboxesNext' :
+					if(req.session.inboxPaginator.hasNext()) {
+						req.session.inboxPaginator.next(function(err, results) {
+							var keys = new Array();
+							for(id in results) {
+								keys.push(results[id].id);
+							}
+							mailsdb.getMulti(keys, {}, function(err, results) {
+								var inboxes = new Array();
+								for(id in results) {
+									if(results[id].value) {
+										results[id].value.id = id;
+										delete(results[id].value.username);
+										inboxes.push(results[id].value);
+									}
+								}
+								response.message = 'OK';
+								response.hasNext = req.session.inboxPaginator.hasNext();
+								response.inboxes = inboxes;
+								res.send(tools.encodeResponse(req,response));
+							});
+						});
+					}
 					break;
 				case 'send' :
 					var mails = request.mails;
@@ -164,6 +190,17 @@ app
 					}
 					response.message = 'OK';
 					res.send(tools.encodeResponse(req,response));
+					break;
+				case 'update' :
+					usersdb.get(req.session.user, function(err,result) {
+						result.value.p = request.p;
+						usersdb.set(req.session.user, result.value, function(err, result) {
+							response.message = err ? 'NOK' : 'OK';
+							res.send(tools.encodeResponse(req,response));
+						});
+						
+						
+					});
 					break;
 			}
 		}

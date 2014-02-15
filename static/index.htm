@@ -118,6 +118,12 @@
 				No mails !
 			{{/each}}
 		</ul>
+		{{#if hasPrevious}}
+			<a href="#" {{action 'nextPage'}} class="glyphicon glyphicon-chevron-left"></a>
+		{{/if}}
+		{{#if hasNext}}
+			<a href="#" {{action 'prevPage'}} class="glyphicon glyphicon-chevron-right"></a>
+		{{/if}}
 	</div>
 	<div class="col-md-8">
 		{{outlet}}

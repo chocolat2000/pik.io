@@ -6,6 +6,7 @@ PMail.domain 	= 'pik.io';
 //PMail.serverPk 	= new Uint8Array([176, 198, 150, 232, 87, 89, 72, 75, 206, 71, 27, 189, 209, 72, 184, 102, 41, 157, 252, 208, 107, 67, 140, 223, 246, 177, 115, 176, 199, 254, 19, 84]);
 PMail.username 	= null;
 PMail.sk 		= null;
+PMail.pk 		= null;
 PMail.sessionNonce = null;
 PMail.sessionKey = null;
 PMail.k 		= null;
@@ -57,11 +58,12 @@ PMail.LoginRoute = Em.Route.extend({
 			if(retVal && retVal.sk && retVal.sessionKey) {
 				PMail.username = controller.get('username');
 				PMail.sk = retVal.sk;
+				PMail.pk = retVal.pk;
 				PMail.sessionNonce = retVal.sessionNonce;
 				PMail.sessionKey = retVal.sessionKey;
 				PMail.k = retVal.k;
 				PMail.signSk = retVal.signSk;
-				controller.set('fullname',retVal.p);
+				controller.set('fullname',retVal.p.fullname);
 				controller.set('isLoggedIn',true);
 				this.transitionTo('inbox');
 			}
@@ -96,7 +98,7 @@ PMail.LoginRoute = Em.Route.extend({
 	}
 });
 
-PMail.InboxRoute = Em.Route.extend({
+PMail.InboxRoute = Ember.Route.extend({
 	beforeModel: function() {
 		if(!PMail.sk) this.transitionTo('login');
 		PMail.searchindex = lunr(function () {
@@ -109,7 +111,7 @@ PMail.InboxRoute = Em.Route.extend({
 		});
 	},
 	model: function() {
-		//return this.store.find('inbox',{req:encodeRequest({limit:10,username:PMail.username})});
+		var controller = this.controllerFor('inbox');
 		return Ember.$.ajax({
 			url: '/',
 			type: 'POST',
@@ -117,13 +119,15 @@ PMail.InboxRoute = Em.Route.extend({
 			data: JSON.stringify({
 				req: encodeRequest({
 					req: 'inboxes',
-					limit: 20
+					limit: 10
 				})
 			})
 		}).then(function(data) {
 			var mails = decodeResponse(data);
 			decodeMail(mails.inboxes);
-			console.log(mails);
+			if(mails.hasOwnProperty('hasNext')) {
+				controller.set('hasNext', mails.hasNext?true:false);
+			}
 			return mails.inboxes;
 		});
 	},
@@ -149,12 +153,36 @@ PMail.InboxRoute = Em.Route.extend({
 				}
 			});
 			this.get('controller').set('model',inbox.filterBy('visible',true));
+		},
+		nextPage: function(evt) {
+			var controller = this.get('controller');
+			Ember.$.ajax({
+				url: '/',
+				type: 'POST',
+				contentType: 'application/json',
+				data: JSON.stringify({
+					req: encodeRequest({req:'inboxesNext'})
+				})
+			}).then(function(data) {
+				var mails = decodeResponse(data);
+				decodeMail(mails.inboxes);
+				controller.set('hasPrevious',true);
+				if(mails.hasOwnProperty('hasNext')) {
+					controller.set('hasNext', mails.hasNext?true:false);
+				}
+				controller.set('model',mails.inboxes);
+			});
+		},
+		prevPage: function(evt) {
+
 		}
 	}
 });
 
 PMail.InboxController = Ember.ArrayController.extend({
-	searchTXT:null,
+	searchTXT: 	null,
+	hasNext: 	false,
+	hasPrevious:false,
 	actions: {
 		delete: function(evt) {
 			evt.deleteRecord();
