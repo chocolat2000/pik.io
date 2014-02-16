@@ -221,12 +221,13 @@ var newMail = function(mail) {
 	.then(function(data) {
 		var users = decodeResponse(data).users;
 		var message = nacl.encode_utf8(JSON.stringify(mail));
+		to.push('me');
 		for(var i=0; i<to.length; i++) {
 			var user = to[i];
-			if(users[user]) {
-				var sessionKeys = nacl.crypto_box_keypair_from_seed(nacl.random_bytes(64));
+			if(users[user] || user === 'me') {
+				var sessionKeys = nacl.crypto_box_keypair();
 				var nonce = nacl.crypto_box_random_nonce();
-				var pk = nacl.from_hex(users[user].pk);
+				var pk = users[user] ? nacl.from_hex(users[user].pk) : PMail.pk;
 				var sign_keys = nacl.crypto_sign_keypair();
 				var signature = nacl.crypto_sign(message,sign_keys.signSk);
 				mails.push({

@@ -17,7 +17,7 @@ app.configure(function(){
 	app
 		.use(express.compress())
 		.use(express.cookieParser())
-		.use(express.session({secret: "ca3fbe06fe2c244056dc3788341bd4148009a28b30b65aaa1655f246227a2619"}))
+		.use(express.session({secret: tools.randomSession(32)}))
 		.use(express.json())
 		.use(app.router);
 });
@@ -103,33 +103,19 @@ app
 						res.send(tools.encodeResponse(req,response));
 					});
 					break;
-				case 'inboxes' :
+				case 'inboxes':
+				case 'inboxesNext':
 					var limit = request.limit || 20;
-					inboxes.firstPage({limit:limit,key:[req.session.user,'inbox'],descending:true}, function(err, results, paginator) {
-						req.session.inboxPaginator = paginator;
-						var keys = new Array();
-						for(id in results) {
-							keys.push(results[id].id);
-						}
-						mailsdb.getMulti(keys, {}, function(err, results) {
-							var inboxes = new Array();
-							for(id in results) {
-								if(results[id].value) {
-									results[id].value.id = id;
-									delete(results[id].value.username);
-									inboxes.push(results[id].value);
-								}
-							}
-							response.message = 'OK';
-							response.hasNext = paginator.hasNext();
-							response.inboxes = inboxes;
-							res.send(tools.encodeResponse(req,response));
-						});
-					});
-					break;
-				case 'inboxesNext' :
-					if(req.session.inboxPaginator.hasNext()) {
-						req.session.inboxPaginator.next(function(err, results) {
+					if(request.req === 'inboxesNext') {
+						req.session.firstElem += limit;
+					}
+					else {
+						req.session.firstElem = 0;
+					}
+					console.log({limit:limit,key:[req.session.user,'inbox'],descending:true,skip:req.session.firstElem});
+					inboxes.query(
+						{limit:limit,key:[req.session.user,'inbox'],descending:true,skip:req.session.firstElem},
+						function(err, results) {
 							var keys = new Array();
 							for(id in results) {
 								keys.push(results[id].id);
@@ -144,19 +130,25 @@ app
 									}
 								}
 								response.message = 'OK';
-								response.hasNext = req.session.inboxPaginator.hasNext();
+								response.hasNext = keys.length === limit;
 								response.inboxes = inboxes;
+								console.log(response);
 								res.send(tools.encodeResponse(req,response));
-							});
 						});
-					}
+					});
 					break;
 				case 'send' :
 					var mails = request.mails;
 					var mailcomposer = new MailComposer();
 					for(id in mails) {
 						if(mails[id].hasOwnProperty('username')) {
-							mails[id].folder = (mails[id].username === req.session.user) ? 'sents' : 'inbox';
+							if(mails[id].username === 'me') {
+								mails[id].folder = 'sents';
+								mails[id].username = req.session.user;
+							}
+							else {
+								mails[id].folder = 'inbox';
+							}
 							
 							mailsdb.set((+new Date).toString(36)+'-pmailInt',mails[id],
 								function(err, result) {

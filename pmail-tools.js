@@ -1,10 +1,6 @@
 var nacl 		= require('js-nacl').instantiate();
 
 
-//var serverPk = new Uint8Array([176, 198, 150, 232, 87, 89, 72, 75, 206, 71, 27, 189, 209, 72, 184, 102, 41, 157, 252, 208, 107, 67, 140, 223, 246, 177, 115, 176, 199, 254, 19, 84]);
-//var serverSk = new Uint8Array([245, 5, 43, 242, 114, 195, 121, 65, 175, 193, 64, 71, 138, 161, 128, 103, 104, 110, 174, 238, 223, 151, 165, 209, 242, 97, 109, 224, 189, 162, 88, 230]);
-//var serverPk_hex = nacl.to_hex(serverPk);
-
 nacl.from_hex = function (s) {
 	var result = new Uint8Array(s.length / 2);
 	for (var i = 0; i < s.length / 2; i++) {
@@ -24,6 +20,10 @@ var incNonce = function(nonce) {
 		while ((i > 0) && (nonce[i] < 1));
 	}
 };
+
+var randomSession = function(size) {
+	return nacl.to_hex(nacl.random_bytes(size));
+}
 
 var decodeRequest = function(req) {
 	if(!req.session.key || !(req.query.hasOwnProperty('req') || req.body.hasOwnProperty('req'))) return null;
@@ -95,5 +95,6 @@ module.exports = {
 	decodeMail: decodeMail,
 	newConnection: newConnection,
 	newUser: newUser,
+	randomSession: randomSession,
 	nacl: nacl
 }

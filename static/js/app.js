@@ -63,7 +63,7 @@ PMail.LoginRoute = Em.Route.extend({
 				PMail.sessionKey = retVal.sessionKey;
 				PMail.k = retVal.k;
 				PMail.signSk = retVal.signSk;
-				controller.set('fullname',retVal.p.fullname);
+				controller.set('fullname', retVal.p ? retVal.p.fullname : '');
 				controller.set('isLoggedIn',true);
 				this.transitionTo('inbox');
 			}
@@ -153,15 +153,29 @@ PMail.InboxRoute = Ember.Route.extend({
 				}
 			});
 			this.get('controller').set('model',inbox.filterBy('visible',true));
+		}
+	}
+});
+
+
+
+PMail.InboxController = Ember.ArrayController.extend({
+	searchTXT: 	null,
+	hasNext: 	false,
+	hasPrevious:false,
+	actions: {
+		delete: function(evt) {
+			evt.deleteRecord();
 		},
-		nextPage: function(evt) {
-			var controller = this.get('controller');
+		nextPage: function(event) {
+			var controller = this;
+			if(!this.get('hasNext')) return;
 			Ember.$.ajax({
 				url: '/',
 				type: 'POST',
 				contentType: 'application/json',
 				data: JSON.stringify({
-					req: encodeRequest({req:'inboxesNext'})
+					req: encodeRequest({req:'inboxesNext',limit:10})
 				})
 			}).then(function(data) {
 				var mails = decodeResponse(data);
@@ -173,22 +187,14 @@ PMail.InboxRoute = Ember.Route.extend({
 				controller.set('model',mails.inboxes);
 			});
 		},
-		prevPage: function(evt) {
+		prevPage: function(event) {
+			var controller = this;
+			if(!this.get('hasPrevious')) return;
 
 		}
 	}
 });
 
-PMail.InboxController = Ember.ArrayController.extend({
-	searchTXT: 	null,
-	hasNext: 	false,
-	hasPrevious:false,
-	actions: {
-		delete: function(evt) {
-			evt.deleteRecord();
-		}
-	}
-});
 /*
 PMail.InboxSerializer = DS.RESTSerializer.extend({
 	normalizePayload: function(type, payload) {

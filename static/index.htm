@@ -118,12 +118,10 @@
 				No mails !
 			{{/each}}
 		</ul>
-		{{#if hasPrevious}}
-			<a href="#" {{action 'nextPage'}} class="glyphicon glyphicon-chevron-left"></a>
-		{{/if}}
-		{{#if hasNext}}
-			<a href="#" {{action 'prevPage'}} class="glyphicon glyphicon-chevron-right"></a>
-		{{/if}}
+		<ul class="pagination">
+		  <li {{bind-attr class="hasPrevious::disabled"}}><a href="#" {{action 'prevPage'}}>&laquo;</a></li>
+		  <li {{bind-attr class="hasNext::disabled"}}><a href="#" {{action 'nextPage'}}>&raquo;</a></li>
+		</ul>
 	</div>
 	<div class="col-md-8">
 		{{outlet}}
