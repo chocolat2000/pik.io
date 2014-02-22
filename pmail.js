@@ -1,3 +1,4 @@
+"use strict";
 var express		= require('express');
 var couchbase	= require('couchbase');
 var tools 		= require('./pmail-tools');
@@ -93,7 +94,7 @@ app
 				case 'users' : 
 					var users = new Object();
 					usersdb.getMulti(request.users, {}, function(err, results) {
-						for(user in results) {
+						for(var user in results) {
 							if(results[user].hasOwnProperty('value')) {
 								users[user] = {pk:results[user].value.pk};
 							}
@@ -105,24 +106,28 @@ app
 					break;
 				case 'inboxes':
 				case 'inboxesNext':
+				case 'inboxesPrev':
 					var limit = request.limit || 20;
 					if(request.req === 'inboxesNext') {
 						req.session.firstElem += limit;
 					}
+					else if(request.req === 'inboxesPrev') {
+						req.session.firstElem -= limit;
+						if(req.session.firstElem < 0) req.session.firstElem = 0;
+					}
 					else {
 						req.session.firstElem = 0;
 					}
-					console.log({limit:limit,key:[req.session.user,'inbox'],descending:true,skip:req.session.firstElem});
 					inboxes.query(
 						{limit:limit,key:[req.session.user,'inbox'],descending:true,skip:req.session.firstElem},
 						function(err, results) {
 							var keys = new Array();
-							for(id in results) {
+							for(var id in results) {
 								keys.push(results[id].id);
 							}
 							mailsdb.getMulti(keys, {}, function(err, results) {
 								var inboxes = new Array();
-								for(id in results) {
+								for(var id in results) {
 									if(results[id].value) {
 										results[id].value.id = id;
 										delete(results[id].value.username);
@@ -131,8 +136,8 @@ app
 								}
 								response.message = 'OK';
 								response.hasNext = keys.length === limit;
+								response.hasPrevious = req.session.firstElem > 0;
 								response.inboxes = inboxes;
-								console.log(response);
 								res.send(tools.encodeResponse(req,response));
 						});
 					});
@@ -140,7 +145,7 @@ app
 				case 'send' :
 					var mails = request.mails;
 					var mailcomposer = new MailComposer();
-					for(id in mails) {
+					for(var id in mails) {
 						if(mails[id].hasOwnProperty('username')) {
 							if(mails[id].username === 'me') {
 								mails[id].folder = 'sents';
@@ -161,10 +166,10 @@ app
 							var mail = JSON.parse(mails[id].body);
 							var to = [];
 							var from = [];
-							for(i in mail.to) {
+							for(var i in mail.to) {
 								to.push(mail.to[i].address);
 							}
-							for(i in mail.from) {
+							for(var i in mail.from) {
 								from.push(mail.from[i].address+'@'+domains[0]);
 							}
 							var message = new MailComposer();
@@ -174,7 +179,6 @@ app
 								text: mail.text,
 								html: mail.html
 							});
-							console.log(message);
 							mailPool.sendMail(message, function(error, responseObj) {
 								console.log(error);
 							});
@@ -248,7 +252,7 @@ app
 		var limit = request.limit || 20;
 		inboxes.query({limit:limit,key:[request.username,'sents'],descending:true}, function(err, results) {
 			var keys = new Array();
-			for(id in results) {
+			for(var id in results) {
 				keys.push(results[id].id);
 			}
 			mailsdb.getMulti(keys, {}, function(err, results) {

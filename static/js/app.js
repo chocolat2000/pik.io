@@ -3,7 +3,6 @@ window.PMail 	= Ember.Application.create();
 PMail.searchindex	= null;
 PMail.domain 	= 'pik.io';
 
-//PMail.serverPk 	= new Uint8Array([176, 198, 150, 232, 87, 89, 72, 75, 206, 71, 27, 189, 209, 72, 184, 102, 41, 157, 252, 208, 107, 67, 140, 223, 246, 177, 115, 176, 199, 254, 19, 84]);
 PMail.username 	= null;
 PMail.sk 		= null;
 PMail.pk 		= null;
@@ -164,21 +163,16 @@ PMail.InboxController = Ember.ArrayController.extend({
 	hasNext: 	false,
 	hasPrevious:false,
 	actions: {
-		delete: function(evt) {
-			evt.deleteRecord();
+		delete: function(mail) {
+			if(!mail.hasOwnProperty('id')) return;
+			
 		},
 		nextPage: function(event) {
 			var controller = this;
 			if(!this.get('hasNext')) return;
-			Ember.$.ajax({
-				url: '/',
-				type: 'POST',
-				contentType: 'application/json',
-				data: JSON.stringify({
-					req: encodeRequest({req:'inboxesNext',limit:10})
-				})
-			}).then(function(data) {
-				var mails = decodeResponse(data);
+			sendRequest(
+				'inboxesNext', {limit:10}
+			).then(function(mails) {
 				decodeMail(mails.inboxes);
 				controller.set('hasPrevious',true);
 				if(mails.hasOwnProperty('hasNext')) {
@@ -190,22 +184,19 @@ PMail.InboxController = Ember.ArrayController.extend({
 		prevPage: function(event) {
 			var controller = this;
 			if(!this.get('hasPrevious')) return;
-
+			sendRequest(
+				'inboxesPrev', {limit:10}
+			).then(function(mails) {
+				decodeMail(mails.inboxes);
+				controller.set('hasNext',true);
+				if(mails.hasOwnProperty('hasPrevious')) {
+					controller.set('hasPrevious', mails.hasPrevious?true:false);
+				}
+				controller.set('model',mails.inboxes);
+			});		
 		}
 	}
 });
-
-/*
-PMail.InboxSerializer = DS.RESTSerializer.extend({
-	normalizePayload: function(type, payload) {
-		var mails = decodeResponse(payload);
-		console.log(mails);
-		decodeMail(mails.inboxes);
-		return mails;
-	}
-
-});
-*/
 
 PMail.InboxMailRoute = Em.Route.extend({
 	beforeModel: function() {
@@ -292,7 +283,7 @@ Ember.Handlebars.helper('maillist', function(value, options) {
 });
 
 Ember.Handlebars.helper('truncate', function(value, options) {
-	return (value.length > 30) ? value.slice(0,27)+"...":value;
+	return ((typeof value === 'string') && value.length > 23) ? value.slice(0,20)+"...":value;
 });
 
 PMail.ComposeRoute = Em.Route.extend({

@@ -8,11 +8,23 @@ var incNonce = function(nonce) {
 	if(nonce[i] < 2) {
 		do {
 			--i;
-			nonce[i] += 1;
+			nonce[i] = nonce[i] + 1;
 		}
-		while ((i > 0) && (nonce[i] < 1));
+		while ((i > 0) && (nonce[i] === 0));
 	}
 };
+
+var decNonce = function(nonce) {
+	var i = nonce.length-1;
+	nonce[i] -= 2;
+	if(nonce[i] >= 254) {
+		do {
+			--i;
+			nonce[i] = nonce[i] - 1;
+		}
+		while ((i > 0) && (nonce[i] === 255 ));
+	}
+}
 
 var joinUser = function(username,password) {
 	var keypair = nacl.crypto_box_keypair();
@@ -122,13 +134,8 @@ var updateUser = function(fullname) {
 	var	data = JSON.stringify({fullname: fullname});
 	data = nacl.crypto_secretbox(nacl.encode_utf8(data),nonce,PMail.k);
 	p.data = nacl.to_hex(data);
-	$.ajax({
-		url: '/',
-		type: 'POST',
-		async: false,
-		contentType: 'application/json',
-		data: JSON.stringify({req:encodeRequest({req:'update',p:p})})
-	}).done(function(data) {
+	sendRequest('update', {p:p})
+	.then(function(data) {
 
 	});
 }
@@ -182,8 +189,15 @@ var decodeMail = function(mails) {
 var decodeResponse = function(res) {
 	if(!res.hasOwnProperty('res')) return null;
 	var nonce = PMail.sessionNonce;
-	incNonce(PMail.sessionNonce); 
-	return JSON.parse(nacl.decode_utf8(nacl.crypto_box_open_precomputed(nacl.from_hex(res.res),nonce,PMail.sessionKey)));
+	incNonce(PMail.sessionNonce);
+	try {
+		var decoded = nacl.decode_utf8(nacl.crypto_box_open_precomputed(nacl.from_hex(res.res),nonce,PMail.sessionKey));
+	}
+	catch (err) {
+		PMail.sessionNonce = nonce;
+		throw "Decode Error";
+	}
+	return JSON.parse(decoded);
 }
 
 var newMail = function(mail) {
@@ -193,8 +207,6 @@ var newMail = function(mail) {
 	var mails = new Array();
 	var fullPMail = new RegExp('^(.+)@'+PMail.domain+'$','i');
 	var isMail = new RegExp('^(.+)@(.+)$','i');
-
-	//to.push(PMail.username);
 
 	for(var i = 0; i<mail.to.length; i++) {
 		if(isMail.exec(mail.to[i].address)) {
@@ -212,14 +224,9 @@ var newMail = function(mail) {
 			to.push(mail.to[i].address);
 		}
 	}
-	$.ajax({
-		url: '/',
-		type: 'POST',
-		contentType: 'application/json',
-		data: JSON.stringify({req:encodeRequest({req:'users',users:to})})
-	})
-	.then(function(data) {
-		var users = decodeResponse(data).users;
+	sendRequest('users', {users:to})
+	.then(function(response) {
+		var users = response.users;
 		var message = nacl.encode_utf8(JSON.stringify(mail));
 		to.push('me');
 		for(var i=0; i<to.length; i++) {
@@ -239,14 +246,9 @@ var newMail = function(mail) {
 				});
 			}
 		}
-		$.ajax({
-			url: '/',
-			type: 'POST',
-			contentType: 'application/json',
-			data: JSON.stringify({req:encodeRequest({req:'send',mails:mails})})
-		})
-		.then(function(data) {
-			if(decodeResponse(data).message === 'OK')
+		sendRequest('send',{mails:mails})
+		.then(function(response) {
+			if(response.message === 'OK')
 				deferred.resolve();
 			else
 				deferred.reject();
@@ -258,6 +260,31 @@ var newMail = function(mail) {
 	});
 	return deferred;
 };
+
+var sendRequest = function(type, request) {
+	var deferred = $.Deferred();
+	request.req = type;
+	$.ajax({
+		url: '/',
+		type: 'POST',
+		contentType: 'application/json',
+		data: JSON.stringify({
+			req: encodeRequest(request)
+		})
+	}).then(function(data) {
+		deferred.notify("Response received");
+		try {
+			var decoded = decodeResponse(data);
+		}
+		catch (err) {
+			deferred.fail("Cannot decode response");
+		}
+		deferred.resolve(decoded);
+	}, function(err) {
+		deferred.fail();
+	})
+	return deferred;
+}
 
 var encodeRequest = function(req) {
 	if(!PMail.sessionKey || !PMail.sessionNonce) return;

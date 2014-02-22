@@ -1,5 +1,4 @@
-require('newrelic');
-
+"use strict";
 var couchbase	= require('couchbase');
 var nacl 		= require('js-nacl').instantiate();
 var simplesmtp	= require('simplesmtp');

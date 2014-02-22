@@ -174,10 +174,17 @@
 		</p>
 		<ul class="list-unstyled">
 		{{#each}}
-			<li>{{#link-to "sent.mail" this}}{{subject}}{{/link-to}}</li>
+			<li>
+				<div class="col-md-8">{{#link-to "sent.mail" this}}{{truncate subject}}{{/link-to}}</div>
+				<div class="col-md-1"><a href="#" {{action 'delete' this}} class="fui-cross"></a></div>
+			</li>
 		{{else}}
 			No mails !
 		{{/each}}
+		</ul>
+		<ul class="pagination">
+		  <li {{bind-attr class="hasPrevious::disabled"}}><a href="#" {{action 'prevPage'}}>&laquo;</a></li>
+		  <li {{bind-attr class="hasNext::disabled"}}><a href="#" {{action 'nextPage'}}>&raquo;</a></li>
 		</ul>
 	</div>
 	<div class="col-md-8">
