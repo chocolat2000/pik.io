@@ -9,7 +9,12 @@ var app 	= express();
 var usersdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
 var mailsdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
 
-var mailPool = simplesmtp.createClientPool(25);
+var mailPool = simplesmtp.createClientPool(587, localhost, {
+	auth : {
+		user: 'pikio',
+		pass: 'pikio'
+	}
+});
 var domains = ['pik.io'];
 
 var inboxes = mailsdb.view('inboxes','by_username');
