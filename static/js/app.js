@@ -111,18 +111,8 @@ PMail.InboxRoute = Ember.Route.extend({
 	},
 	model: function() {
 		var controller = this.controllerFor('inbox');
-		return Ember.$.ajax({
-			url: '/',
-			type: 'POST',
-			contentType: 'application/json',
-			data: JSON.stringify({
-				req: encodeRequest({
-					req: 'inboxes',
-					limit: 10
-				})
-			})
-		}).then(function(data) {
-			var mails = decodeResponse(data);
+		return sendRequest('inboxes', {limit:10})
+		.then(function(mails) {
 			decodeMail(mails.inboxes);
 			if(mails.hasOwnProperty('hasNext')) {
 				controller.set('hasNext', mails.hasNext?true:false);
@@ -165,14 +155,27 @@ PMail.InboxController = Ember.ArrayController.extend({
 	actions: {
 		delete: function(mail) {
 			if(!mail.hasOwnProperty('id')) return;
-			
+			var controller = this;
+			sendRequest('toTrash',{id:mail.id})
+			.then(function() {
+				sendRequest('inboxes', {limit:10})
+				.then(function(mails) {
+					decodeMail(mails.inboxes);
+					if(mails.hasOwnProperty('hasPrevious')) {
+						controller.set('hasPrevious', mails.hasPrevious?true:false);
+					}
+					if(mails.hasOwnProperty('hasNext')) {
+						controller.set('hasNext', mails.hasNext?true:false);
+					}
+					controller.set('model',mails.inboxes);
+				});
+			});
 		},
 		nextPage: function(event) {
-			var controller = this;
 			if(!this.get('hasNext')) return;
-			sendRequest(
-				'inboxesNext', {limit:10}
-			).then(function(mails) {
+			var controller = this;
+			sendRequest('inboxesNext', {limit:10})
+			.then(function(mails) {
 				decodeMail(mails.inboxes);
 				controller.set('hasPrevious',true);
 				if(mails.hasOwnProperty('hasNext')) {
@@ -182,11 +185,10 @@ PMail.InboxController = Ember.ArrayController.extend({
 			});
 		},
 		prevPage: function(event) {
-			var controller = this;
 			if(!this.get('hasPrevious')) return;
-			sendRequest(
-				'inboxesPrev', {limit:10}
-			).then(function(mails) {
+			var controller = this;
+			sendRequest('inboxesPrev', {limit:10})
+			.then(function(mails) {
 				decodeMail(mails.inboxes);
 				controller.set('hasNext',true);
 				if(mails.hasOwnProperty('hasPrevious')) {
@@ -265,17 +267,28 @@ PMail.SentRoute = Em.Route.extend({
 		if(!PMail.sk) this.transitionTo('login');
 	},
 	model: function() {
-		return this.store.find('sent',{req:encodeRequest({limit:10,username:PMail.username})});
+		var controller = this.controllerFor('sent');
+		return sendRequest('sents', {limit:10})
+		.then(function(mails) {
+			decodeMail(mails.inboxes);
+			if(mails.hasOwnProperty('hasNext')) {
+				controller.set('hasNext', mails.hasNext?true:false);
+			}
+			return mails.inboxes;
+		});
 	}
 });
 
-PMail.SentSerializer = DS.RESTSerializer.extend({
-	normalizePayload: function(type, payload) {
-		var mails = decodeResponse(payload);
-		decodeMail(mails.sents);
-		return mails;
-	}
+PMail.SentController = Ember.ArrayController.extend({
+	searchTXT: 	null,
+	hasNext: 	false,
+	hasPrevious:false,
+});
 
+PMail.SentMailRoute = Em.Route.extend({
+	beforeModel: function() {
+		if(!PMail.sk) this.transitionTo('login');
+	}
 });
 
 Ember.Handlebars.helper('maillist', function(value, options) {

@@ -54,6 +54,7 @@ app
 			if(!err && result.value) {
 				res.send({status: 'OK', res:tools.newConnection(req,result.value)});
 				req.session.user = req.params.username;
+				req.session.firstElem = 0;
 			}
 			else {
 				res.send({status: 'NOK'});
@@ -115,9 +116,6 @@ app
 						req.session.firstElem -= limit;
 						if(req.session.firstElem < 0) req.session.firstElem = 0;
 					}
-					else {
-						req.session.firstElem = 0;
-					}
 					inboxes.query(
 						{limit:limit,key:[req.session.user,'inbox'],descending:true,skip:req.session.firstElem},
 						function(err, results) {
@@ -139,10 +137,54 @@ app
 								response.hasPrevious = req.session.firstElem > 0;
 								response.inboxes = inboxes;
 								res.send(tools.encodeResponse(req,response));
+							});
+					});
+					break;
+				case 'toTrash':
+					mailsdb.get(request.id, function(err, result) {
+						result.value.folder = 'trash';
+						mailsdb.set(request.id,result.value,function(err, result) {
+							response.message = 'OK';
+							res.send(tools.encodeResponse(req,response));
 						});
 					});
 					break;
-				case 'send' :
+				case 'sents':
+				case 'sentsNext':
+				case 'sentsPrev':
+					var limit = request.limit || 20;
+					if(request.req === 'sentsNext') {
+						req.session.firstElem += limit;
+					}
+					else if(request.req === 'sentsPrev') {
+						req.session.firstElem -= limit;
+						if(req.session.firstElem < 0) req.session.firstElem = 0;
+					}
+					inboxes.query(
+						{limit:limit,key:[req.session.user,'sents'],descending:true,skip:req.session.firstElem},
+						function(err, results) {
+							var keys = new Array();
+							for(var id in results) {
+								keys.push(results[id].id);
+							}
+							mailsdb.getMulti(keys, {}, function(err, results) {
+								var inboxes = new Array();
+								for(var id in results) {
+									if(results[id].value) {
+										results[id].value.id = id;
+										delete(results[id].value.username);
+										inboxes.push(results[id].value);
+									}
+								}
+								response.message = 'OK';
+								response.hasNext = keys.length === limit;
+								response.hasPrevious = req.session.firstElem > 0;
+								response.inboxes = inboxes;
+								res.send(tools.encodeResponse(req,response));
+							});
+					});
+					break;
+				case 'send':
 					var mails = request.mails;
 					var mailcomposer = new MailComposer();
 					for(var id in mails) {
@@ -163,7 +205,7 @@ app
 								});
 						}
 						else {
-							var mail = JSON.parse(mails[id].body);
+							var mail = mails[id].body;
 							var to = [];
 							var from = [];
 							for(var i in mail.to) {
@@ -176,10 +218,12 @@ app
 							message.setMessageOption({
 								from: from.join(', '),
 								to: to.join(', '),
+								subject: mail.subject,
 								text: mail.text,
 								html: mail.html
 							});
 							mailPool.sendMail(message, function(error, responseObj) {
+								console.log('Cannot send mail');
 								console.log(error);
 							});
 						}
@@ -199,117 +243,6 @@ app
 					});
 					break;
 			}
-		}
-	})
-	.get('/users', function(req, res) {
-		var request = tools.decodeRequest(req);
-		if(!request || !request.hasOwnProperty('users')) {
-			res.send(tools.encodeResponse(req,{users: new Array()}));
-		}
-		else {
-			var users = new Object();
-			usersdb.getMulti(request.users, {}, function(err, results) {
-				for(user in results) {
-					if(results[user].hasOwnProperty('value')) {
-						users[user] = {pk:results[user].value.pk};
-					}
-				}
-				res.send(tools.encodeResponse(req,{users: users}));
-			});
-		}
-	})
-	.get('/inboxes', function(req, res) {
-		var request = tools.decodeRequest(req);
-		if(!request || !request.hasOwnProperty('username')) {
-			res.send({inboxes: new Array()});
-			return;
-		}
-		var limit = request.limit || 20;
-		inboxes.query({limit:limit,key:[request.username,'inbox'],descending:true}, function(err, results) {
-			var keys = new Array();
-			for(id in results) {
-				keys.push(results[id].id);
-			}
-			mailsdb.getMulti(keys, {}, function(err, results) {
-				var inboxes = {inboxes: new Array()};
-				for(id in results) {
-					if(results[id].value) {
-						results[id].value.id = id;
-						delete(results[id].value.username);
-						inboxes.inboxes.push(results[id].value);
-					}
-				}
-				res.send(tools.encodeResponse(req,inboxes));
-			});
-		});
-	})
-	.get('/sents', function(req, res) {
-		var request = tools.decodeRequest(req);
-		if(!request || !request.hasOwnProperty('username')) {
-			res.send({sents: new Array()});
-			return;
-		}
-		var limit = request.limit || 20;
-		inboxes.query({limit:limit,key:[request.username,'sents'],descending:true}, function(err, results) {
-			var keys = new Array();
-			for(var id in results) {
-				keys.push(results[id].id);
-			}
-			mailsdb.getMulti(keys, {}, function(err, results) {
-				var sents = {sents: new Array()};
-				for(id in results) {
-					if(results[id].value) {
-						results[id].value.id = id;
-						sents.sents.push(results[id].value);
-					}
-				}
-				res.send(tools.encodeResponse(req,sents));
-			});
-		});
-	})
-	.post('/send', function(req, res) {
-		if(!req.body) {
-			res.send(400,'failed');
-		}
-		else {
-			var mails = tools.decodeRequest(req).mails;
-			res.send(tools.encodeResponse(req,{status: 'OK'}));
-			var mailcomposer = new MailComposer();
-			for(id in mails) {
-				if(mails[id].hasOwnProperty('username')) {
-					mails[id].folder = (mails[id].username === req.session.user) ? 'sents' : 'inbox';
-					
-					mailsdb.set((+new Date).toString(36)+'-pmailInt',mails[id],
-						function(err, result) {
-							if(err) {
-								console.log(err);
-							}
-						});
-				}
-				else {
-					var mail = JSON.parse(mails[id].body);
-					var to = [];
-					var from = [];
-					for(i in mail.to) {
-						to.push(mail.to[i].address);
-					}
-					for(i in mail.from) {
-						from.push(mail.from[i].address+'@'+domains[0]);
-					}
-					var message = new MailComposer();
-					message.setMessageOption({
-						from: from.join(', '),
-						to: to.join(', '),
-						text: mail.text,
-						html: mail.html
-					});
-					console.log(message);
-					mailPool.sendMail(message, function(error, responseObj) {
-						console.log(error);
-					});
-				}
-			}
-
 		}
 	})
 	.use(express.static(__dirname + '/static'))

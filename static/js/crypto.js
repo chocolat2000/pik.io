@@ -216,7 +216,7 @@ var newMail = function(mail) {
 			}
 			else {
 				mails.push({
-					body:JSON.stringify(mail)
+					body:mail
 				})
 			}
 		}
@@ -279,7 +279,12 @@ var sendRequest = function(type, request) {
 		catch (err) {
 			deferred.fail("Cannot decode response");
 		}
-		deferred.resolve(decoded);
+		if(decoded) {
+			deferred.resolve(decoded);
+		}
+		else {
+			deferred.fail("Cannot decode response");
+		}
 	}, function(err) {
 		deferred.fail();
 	})

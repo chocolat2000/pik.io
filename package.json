@@ -5,10 +5,10 @@
   "author": "me",
   "dependencies": {
     "express": "3.x",
-    "couchbase": "1.1.x",
-    "js-nacl": "0.5.x",
+    "couchbase": "1.x",
+    "js-nacl": ">=0.5.x",
     "simplesmtp": "0.3.x",
-    "mailparser": "0.3.x",
+    "mailparser": "0.4.x",
     "mailcomposer": "0.2.x"
   },
   "engines" : {

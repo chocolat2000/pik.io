@@ -12,8 +12,6 @@ var smtp = simplesmtp.createServer({
 	disableDNSValidation: true
 });
 
-//var serverPk = [176, 198, 150, 232, 87, 89, 72, 75, 206, 71, 27, 189, 209, 72, 184, 102, 41, 157, 252, 208, 107, 67, 140, 223, 246, 177, 115, 176, 199, 254, 19, 84];
-//var serverSk = [245, 5, 43, 242, 114, 195, 121, 65, 175, 193, 64, 71, 138, 161, 128, 103, 104, 110, 174, 238, 223, 151, 165, 209, 242, 97, 109, 224, 189, 162, 88, 230];
 var usersdb =  new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
 var mailsdb =  new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
 
@@ -37,7 +35,7 @@ smtp.on('validateSender ', function(connection, email, done){
 
 smtp.on('startData', function(connection) {
 	connection.parser = new mailparser();
-	connection.parser.connection = connection;
+	//connection.parser.connection = connection;
 	connection.parser.on('end',endParser);
 });
 
@@ -52,29 +50,32 @@ smtp.on('dataReady', function(connection, callback){
 
 var endParser = function(mail) {
 	var usernames = [];
-	for(var key in this.connection.to) {
-		var _to = (this.connection.to[key] || '').split('@');
+	for(var key in mail.to) {
+		var _to = (mail.to[key].address || '').split('@');
 		if(_to.length === 2) {
 			usernames.push(_to[0]);
 		}
 	}
-
+	if(usernames.length === 0)
+		return;
 	usersdb.getMulti(usernames, null, function(err,results) {
 		var mails = new Object();
-		for(username in results) {
+		for(var username in results) {
 			if(results.hasOwnProperty(username) && results[username].value && results[username].value.pk) {
 				var userPk = nacl.from_hex(results[username].value.pk);
-				var sessionKeys = nacl.crypto_box_keypair_from_seed(nacl.random_bytes(64));
+				var sessionKeys = nacl.crypto_box_keypair();
 				var message = nacl.encode_utf8(JSON.stringify(mail));
 				var nonce = nacl.crypto_box_random_nonce();
 				var m_encrypted = nacl.crypto_box(message,nonce,userPk,sessionKeys.boxSk);
-				mails[(+new Date).toString(36)+'-pmailExt'] = {value:{
-					username: username,
-					pk: nacl.to_hex(sessionKeys.boxPk),
-					nonce: nacl.to_hex(nonce),
-					body: nacl.to_hex(m_encrypted),
-					folder: 'inbox'
-				}}
+				mails[(+new Date).toString(36)+'-pmailExt'] = {
+					value:{
+						username: username,
+						pk: nacl.to_hex(sessionKeys.boxPk),
+						nonce: nacl.to_hex(nonce),
+						body: nacl.to_hex(m_encrypted),
+						folder: 'inbox'
+					}
+				}
 			}
 		}
 		mailsdb.setMulti(mails, {},
