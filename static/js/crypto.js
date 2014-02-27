@@ -3,15 +3,17 @@ var scrypt 	= scrypt_module_factory(134217728);
 var nacl 	= nacl_factory.instantiate();
 
 var incNonce = function(nonce) {
-	var i = nonce.length-1;
-	nonce[i] += 2;
-	if(nonce[i] < 2) {
+	var nnonce = nonce;
+	var i = nnonce.length-1;
+	nnonce[i] += 2;
+	if(nnonce[i] < 2) {
 		do {
 			--i;
-			nonce[i] = nonce[i] + 1;
+			nnonce[i] = nnonce[i] + 1;
 		}
-		while ((i > 0) && (nonce[i] === 0));
+		while ((i > 0) && (nnonce[i] === 0));
 	}
+	return nnonce;
 };
 
 var decNonce = function(nonce) {
@@ -86,9 +88,9 @@ var loginUser = function(username,password) {
 			var salt = nacl.from_hex(data.res.user.salt);
 			var pk = nacl.from_hex(data.res.user.pk);
 			var sk = nacl.from_hex(data.res.user.sk);
-			var sessionNonce = nacl.from_hex(data.res.session.sessNonce);
+			//var sessionNonce = nacl.from_hex(data.res.session.sessNonce);
 			var sessionPk = nacl.from_hex(data.res.session.pk);
-			var sNonce = nacl.from_hex(data.res.session.nonce);
+			//var sNonce = nacl.from_hex(data.res.session.nonce);
 			var p = data.res.user.p || null;
 			if(p && p.hasOwnProperty('nonce') && p.hasOwnProperty('data')) {
 				p.nonce = nacl.from_hex(p.nonce);
@@ -101,7 +103,7 @@ var loginUser = function(username,password) {
 				var signSk = nacl.from_hex(sk[1]);
 				sk = nacl.from_hex(sk[0]);
 				var sessionKey = nacl.crypto_box_precompute(sessionPk,sk);
-				sessionNonce = nacl.crypto_box_open_precomputed(sessionNonce,sNonce,sessionKey);
+				//sessionNonce = nacl.crypto_box_open_precomputed(sessionNonce,sNonce,sessionKey);
 				if(p) {
 					p = nacl.decode_utf8(nacl.crypto_secretbox_open(p.data,p.nonce,k));
 				}
@@ -109,7 +111,7 @@ var loginUser = function(username,password) {
 					pk: pk,
 					sk: sk,
 					signSk: signSk,
-					sessionNonce: sessionNonce,
+					//sessionNonce: sessionNonce,
 					sessionKey: sessionKey,
 					k: k,
 					p: JSON.parse(p)
@@ -186,20 +188,6 @@ var decodeMail = function(mails) {
 	});
 };
 
-var decodeResponse = function(res) {
-	if(!res.hasOwnProperty('res')) return null;
-	var nonce = PMail.sessionNonce;
-	incNonce(PMail.sessionNonce);
-	try {
-		var decoded = nacl.decode_utf8(nacl.crypto_box_open_precomputed(nacl.from_hex(res.res),nonce,PMail.sessionKey));
-	}
-	catch (err) {
-		PMail.sessionNonce = nonce;
-		throw "Decode Error";
-	}
-	return JSON.parse(decoded);
-}
-
 var newMail = function(mail) {
 	var deferred = $.Deferred();
 	if(!mail || !mail.to || !PMail.signSk) deferred.reject();
@@ -264,17 +252,16 @@ var newMail = function(mail) {
 var sendRequest = function(type, request) {
 	var deferred = $.Deferred();
 	request.req = type;
+	var req = encodeRequest(request);
 	$.ajax({
 		url: '/',
 		type: 'POST',
 		contentType: 'application/json',
-		data: JSON.stringify({
-			req: encodeRequest(request)
-		})
+		data: JSON.stringify(req)
 	}).then(function(data) {
 		deferred.notify("Response received");
 		try {
-			var decoded = decodeResponse(data);
+			var decoded = decodeResponse(data, req.nonce);
 		}
 		catch (err) {
 			deferred.fail("Cannot decode response");
@@ -292,9 +279,23 @@ var sendRequest = function(type, request) {
 }
 
 var encodeRequest = function(req) {
-	if(!PMail.sessionKey || !PMail.sessionNonce) return;
-	var nonce = PMail.sessionNonce;
-	incNonce(PMail.sessionNonce);
+	if(!PMail.sessionKey) return;
+	var nonce = nacl.crypto_box_random_nonce();
 	var request = nacl.encode_utf8(JSON.stringify(req));
-	return nacl.to_hex(nacl.crypto_box_precomputed(request,nonce,PMail.sessionKey));
+	return {
+		req: nacl.to_hex(nacl.crypto_box_precomputed(request,nonce,PMail.sessionKey)),
+		nonce: nacl.to_hex(nonce)
+	};
 };
+
+var decodeResponse = function(res, nonce) {
+	if(!res.hasOwnProperty('res')) return null;
+	var nonce = incNonce(nacl.from_hex(nonce));
+	try {
+		var decoded = nacl.decode_utf8(nacl.crypto_box_open_precomputed(nacl.from_hex(res.res),nonce,PMail.sessionKey));
+	}
+	catch (err) {
+		throw "Decode Error";
+	}
+	return JSON.parse(decoded);
+}

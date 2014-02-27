@@ -6,7 +6,7 @@ PMail.domain 	= 'pik.io';
 PMail.username 	= null;
 PMail.sk 		= null;
 PMail.pk 		= null;
-PMail.sessionNonce = null;
+//PMail.sessionNonce = null;
 PMail.sessionKey = null;
 PMail.k 		= null;
 
@@ -58,7 +58,7 @@ PMail.LoginRoute = Em.Route.extend({
 				PMail.username = controller.get('username');
 				PMail.sk = retVal.sk;
 				PMail.pk = retVal.pk;
-				PMail.sessionNonce = retVal.sessionNonce;
+				//PMail.sessionNonce = retVal.sessionNonce;
 				PMail.sessionKey = retVal.sessionKey;
 				PMail.k = retVal.k;
 				PMail.signSk = retVal.signSk;
@@ -82,7 +82,7 @@ PMail.LoginRoute = Em.Route.extend({
 			if(retVal && retVal.sk && retVal.sessionKey) {
 				PMail.username = controller.get('username');
 				PMail.sk = retVal.sk;
-				PMail.sessionNonce = retVal.sessionNonce;
+				//PMail.sessionNonce = retVal.sessionNonce;
 				PMail.sessionKey = retVal.sessionKey;
 				PMail.k = retVal.k;
 				PMail.signSk = retVal.signSk;
@@ -283,6 +283,52 @@ PMail.SentController = Ember.ArrayController.extend({
 	searchTXT: 	null,
 	hasNext: 	false,
 	hasPrevious:false,
+	actions: {
+		delete: function(mail) {
+			if(!mail.hasOwnProperty('id')) return;
+			var controller = this;
+			sendRequest('toTrash',{id:mail.id})
+			.then(function() {
+				sendRequest('sents', {limit:10})
+				.then(function(mails) {
+					decodeMail(mails.inboxes);
+					if(mails.hasOwnProperty('hasPrevious')) {
+						controller.set('hasPrevious', mails.hasPrevious?true:false);
+					}
+					if(mails.hasOwnProperty('hasNext')) {
+						controller.set('hasNext', mails.hasNext?true:false);
+					}
+					controller.set('model',mails.inboxes);
+				});
+			});
+		},
+		nextPage: function(event) {
+			if(!this.get('hasNext')) return;
+			var controller = this;
+			sendRequest('sentsNext', {limit:10})
+			.then(function(mails) {
+				decodeMail(mails.inboxes);
+				controller.set('hasPrevious',true);
+				if(mails.hasOwnProperty('hasNext')) {
+					controller.set('hasNext', mails.hasNext?true:false);
+				}
+				controller.set('model',mails.inboxes);
+			});
+		},
+		prevPage: function(event) {
+			if(!this.get('hasPrevious')) return;
+			var controller = this;
+			sendRequest('sentsPrev', {limit:10})
+			.then(function(mails) {
+				decodeMail(mails.inboxes);
+				controller.set('hasNext',true);
+				if(mails.hasOwnProperty('hasPrevious')) {
+					controller.set('hasPrevious', mails.hasPrevious?true:false);
+				}
+				controller.set('model',mails.inboxes);
+			});		
+		}
+	}
 });
 
 PMail.SentMailRoute = Em.Route.extend({

@@ -10,15 +10,17 @@ nacl.from_hex = function (s) {
 };
 
 var incNonce = function(nonce) {
-	var i = nonce.length-1;
-	nonce[i] += 2;
-	if(nonce[i] < 2) {
+	var nnonce = nonce;
+	var i = nnonce.length-1;
+	nnonce[i] += 2;
+	if(nnonce[i] < 2) {
 		do {
 			--i;
-			nonce[i] += 1;
+			nnonce[i] += 1;
 		}
-		while ((i > 0) && (nonce[i] < 1));
+		while ((i > 0) && (nnonce[i] < 1));
 	}
+	return nnonce;
 };
 
 var randomSession = function(size) {
@@ -26,10 +28,10 @@ var randomSession = function(size) {
 }
 
 var decodeRequest = function(req) {
-	if(!req.session.key || !(req.query.hasOwnProperty('req') || req.body.hasOwnProperty('req'))) return null;
-	var request = nacl.from_hex(req.query.req || req.body.req);
-	var nonce = req.session.nonce;
-	incNonce(req.session.nonce);
+	if (!req.session.key ||	!req.body.hasOwnProperty('req') || !req.body.hasOwnProperty('nonce'))
+			return null;
+	var request = nacl.from_hex(req.body.req);
+	var nonce = nacl.from_hex(req.body.nonce);
 	try {
 		return JSON.parse(nacl.decode_utf8(nacl.crypto_box_open_precomputed(request,nonce,req.session.key)));
 	}
@@ -41,8 +43,7 @@ var decodeRequest = function(req) {
 var encodeResponse = function(req,res) {
 	if(!req.session.key) return {res:'Failed'};
 	var response = nacl.encode_utf8(JSON.stringify(res));
-	var nonce = req.session.nonce;
-	incNonce(req.session.nonce);
+	var nonce = incNonce(nacl.from_hex(req.body.nonce));
 	try {
 		return {res:nacl.to_hex(nacl.crypto_box_precomputed(response,nonce,req.session.key))};
 	}
@@ -70,17 +71,17 @@ var decodeMail = function(mail,pk) {
 }
 
 var newConnection = function(req,user) {
-	var sessionKeys = nacl.crypto_box_keypair_from_seed(nacl.random_bytes(64));
-	req.session.nonce = nacl.crypto_secretbox_random_nonce();
+	var sessionKeys = nacl.crypto_box_keypair();
+	//req.session.nonce = nacl.crypto_secretbox_random_nonce();
 	req.session.key = nacl.crypto_box_precompute(nacl.from_hex(user.pk),sessionKeys.boxSk);
-	var nonce = nacl.crypto_box_random_nonce();
-	var sessNonce = nacl.crypto_box_precomputed(req.session.nonce,nonce,req.session.key);
+	//var nonce = nacl.crypto_box_random_nonce();
+	//var sessNonce = nacl.crypto_box_precomputed(req.session.nonce,nonce,req.session.key);
 	return {
 		user: user,
 		session: {
-			nonce: nacl.to_hex(nonce),
+			//nonce: nacl.to_hex(nonce),
 			pk: nacl.to_hex(sessionKeys.boxPk),
-			sessNonce: nacl.to_hex(sessNonce)
+			//sessNonce: nacl.to_hex(sessNonce)
 		}
 	}
 }

@@ -174,10 +174,12 @@
 		</p>
 		<ul class="list-unstyled">
 		{{#each}}
+		<div class="row">
 			<li>
 				<div class="col-md-8">{{#link-to "sent.mail" this}}{{truncate subject}}{{/link-to}}</div>
 				<div class="col-md-1"><a href="#" {{action 'delete' this}} class="fui-cross"></a></div>
 			</li>
+		</div>
 		{{else}}
 			No mails !
 		{{/each}}
