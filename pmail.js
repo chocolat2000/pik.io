@@ -111,18 +111,20 @@ app
 					});
 					break;
 				case 'inboxes':
-				case 'inboxesNext':
-				case 'inboxesPrev':
+				case 'sents':
 					var limit = request.limit || 20;
-					if(request.req === 'inboxesNext') {
-						req.session.firstElem += limit;
-					}
-					else if(request.req === 'inboxesPrev') {
-						req.session.firstElem -= limit;
-						if(req.session.firstElem < 0) req.session.firstElem = 0;
+					var firstElem = request.firstElem || 0;
+					var folder = '';
+					switch(request.req) {
+						case 'inboxes':
+							folder = 'inbox';
+							break;
+						case 'sents':
+							folder = 'sent';
+							break;
 					}
 					inboxes.query(
-						{limit:limit,key:[req.session.user,'inbox'],descending:true,skip:req.session.firstElem},
+						{limit:limit,key:[req.session.user,folder],descending:true,skip:firstElem},
 						function(err, results) {
 							var keys = new Array();
 							for(var id in results) {
@@ -139,7 +141,7 @@ app
 								}
 								response.message = 'OK';
 								response.hasNext = keys.length === limit;
-								response.hasPrevious = req.session.firstElem > 0;
+								response.hasPrevious = firstElem > 0;
 								response.inboxes = inboxes;
 								res.send(tools.encodeResponse(req,response));
 							});
@@ -154,48 +156,13 @@ app
 						});
 					});
 					break;
-				case 'sents':
-				case 'sentsNext':
-				case 'sentsPrev':
-					var limit = request.limit || 20;
-					if(request.req === 'sentsNext') {
-						req.session.firstElem += limit;
-					}
-					else if(request.req === 'sentsPrev') {
-						req.session.firstElem -= limit;
-						if(req.session.firstElem < 0) req.session.firstElem = 0;
-					}
-					inboxes.query(
-						{limit:limit,key:[req.session.user,'sents'],descending:true,skip:req.session.firstElem},
-						function(err, results) {
-							var keys = new Array();
-							for(var id in results) {
-								keys.push(results[id].id);
-							}
-							mailsdb.getMulti(keys, {}, function(err, results) {
-								var inboxes = new Array();
-								for(var id in results) {
-									if(results[id].value) {
-										results[id].value.id = id;
-										delete(results[id].value.username);
-										inboxes.push(results[id].value);
-									}
-								}
-								response.message = 'OK';
-								response.hasNext = keys.length === limit;
-								response.hasPrevious = req.session.firstElem > 0;
-								response.inboxes = inboxes;
-								res.send(tools.encodeResponse(req,response));
-							});
-					});
-					break;
 				case 'send':
 					var mails = request.mails;
 					var mailcomposer = new MailComposer();
 					for(var id in mails) {
 						if(mails[id].hasOwnProperty('username')) {
 							if(mails[id].username === 'me') {
-								mails[id].folder = 'sents';
+								mails[id].folder = 'sent';
 								mails[id].username = req.session.user;
 							}
 							else {
@@ -253,7 +220,7 @@ app
 	.use(express.static(__dirname + '/static'))
 	.use(function(req, res, next){
 		res.setHeader('Content-Type', 'text/html');
-		res.send(404, '<h1>Page introuvable !</h1>');
+		res.send(404, '<html><head><title>404</title></head><body><h1>Page introuvable !</h1></body></html>');
 	});
 
 app.listen(8080);

@@ -111,7 +111,7 @@ PMail.InboxRoute = Ember.Route.extend({
 	},
 	model: function() {
 		var controller = this.controllerFor('inbox');
-		return sendRequest('inboxes', {limit:10})
+		return sendRequest('inboxes', {limit:10,firstElem:controller.get('firstElem')})
 		.then(function(mails) {
 			decodeMail(mails.inboxes);
 			if(mails.hasOwnProperty('hasNext')) {
@@ -152,13 +152,16 @@ PMail.InboxController = Ember.ArrayController.extend({
 	searchTXT: 	null,
 	hasNext: 	false,
 	hasPrevious:false,
+	limit: 		10,
+	firstElem: 	0,
 	actions: {
 		delete: function(mail) {
 			if(!mail.hasOwnProperty('id')) return;
 			var controller = this;
+			var limit = controller.get('limit');
 			sendRequest('toTrash',{id:mail.id})
 			.then(function() {
-				sendRequest('inboxes', {limit:10})
+				sendRequest('inboxes', {limit:limit})
 				.then(function(mails) {
 					decodeMail(mails.inboxes);
 					if(mails.hasOwnProperty('hasPrevious')) {
@@ -174,7 +177,10 @@ PMail.InboxController = Ember.ArrayController.extend({
 		nextPage: function(event) {
 			if(!this.get('hasNext')) return;
 			var controller = this;
-			sendRequest('inboxesNext', {limit:10})
+			var limit = controller.get('limit');
+			var firstElem = controller.get('firstElem') + limit;
+			controller.set('firstElem', firstElem);
+			sendRequest('inboxes', {limit:limit,firstElem:firstElem})
 			.then(function(mails) {
 				decodeMail(mails.inboxes);
 				controller.set('hasPrevious',true);
@@ -187,7 +193,10 @@ PMail.InboxController = Ember.ArrayController.extend({
 		prevPage: function(event) {
 			if(!this.get('hasPrevious')) return;
 			var controller = this;
-			sendRequest('inboxesPrev', {limit:10})
+			var limit = controller.get('limit');
+			var firstElem = controller.get('firstElem') - limit;
+			controller.set('firstElem', firstElem);
+			sendRequest('inboxes', {limit:limit,firstElem:firstElem})
 			.then(function(mails) {
 				decodeMail(mails.inboxes);
 				controller.set('hasNext',true);
@@ -268,7 +277,7 @@ PMail.SentRoute = Em.Route.extend({
 	},
 	model: function() {
 		var controller = this.controllerFor('sent');
-		return sendRequest('sents', {limit:10})
+		return sendRequest('sents', {limit:10,firstElem:controller.get('firstElem')})
 		.then(function(mails) {
 			decodeMail(mails.inboxes);
 			if(mails.hasOwnProperty('hasNext')) {
@@ -283,13 +292,15 @@ PMail.SentController = Ember.ArrayController.extend({
 	searchTXT: 	null,
 	hasNext: 	false,
 	hasPrevious:false,
+	limit: 		10,
+	firstElem: 	0,
 	actions: {
 		delete: function(mail) {
 			if(!mail.hasOwnProperty('id')) return;
 			var controller = this;
 			sendRequest('toTrash',{id:mail.id})
 			.then(function() {
-				sendRequest('sents', {limit:10})
+				sendRequest('sents', {limit:controller.get('limit')})
 				.then(function(mails) {
 					decodeMail(mails.inboxes);
 					if(mails.hasOwnProperty('hasPrevious')) {
@@ -305,7 +316,10 @@ PMail.SentController = Ember.ArrayController.extend({
 		nextPage: function(event) {
 			if(!this.get('hasNext')) return;
 			var controller = this;
-			sendRequest('sentsNext', {limit:10})
+			var limit = controller.get('limit');
+			var firstElem = controller.get('firstElem') + limit;
+			controller.set('firstElem', firstElem);
+			sendRequest('sents', {limit:limit,firstElem:firstElem})
 			.then(function(mails) {
 				decodeMail(mails.inboxes);
 				controller.set('hasPrevious',true);
@@ -318,7 +332,10 @@ PMail.SentController = Ember.ArrayController.extend({
 		prevPage: function(event) {
 			if(!this.get('hasPrevious')) return;
 			var controller = this;
-			sendRequest('sentsPrev', {limit:10})
+			var limit = controller.get('limit');
+			var firstElem = controller.get('firstElem') - limit;
+			controller.set('firstElem', firstElem);
+			sendRequest('sents', {limit:limit,firstElem:firstElem})
 			.then(function(mails) {
 				decodeMail(mails.inboxes);
 				controller.set('hasNext',true);
