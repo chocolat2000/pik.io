@@ -58,10 +58,8 @@ PMail.LoginRoute = Em.Route.extend({
 				PMail.username = controller.get('username');
 				PMail.sk = retVal.sk;
 				PMail.pk = retVal.pk;
-				//PMail.sessionNonce = retVal.sessionNonce;
 				PMail.sessionKey = retVal.sessionKey;
 				PMail.k = retVal.k;
-				PMail.signSk = retVal.signSk;
 				controller.set('fullname', retVal.p ? retVal.p.fullname : '');
 				controller.set('isLoggedIn',true);
 				this.transitionTo('inbox');

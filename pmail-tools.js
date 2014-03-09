@@ -1,6 +1,22 @@
 var nacl 		= require('js-nacl').instantiate();
+var serverKeys 	= {};
+
+require('fs').readFile('pmail.json',{encoding:'utf-8',flag:'r'},function(err,data) {
+	try {
+		if(err) throw err;
+		serverKeys = JSON.parse(data);
+		serverKeys.signPkUint8 = nacl.from_hex(serverKeys.signPk);
+		serverKeys.signSkUint8 = nacl.from_hex(serverKeys.signSk);
+	}
+	catch (err) {
+		console.log(err);
+		serverKeys = null;
+	}
+});
 
 
+
+/*
 nacl.from_hex = function (s) {
 	var result = new Uint8Array(s.length / 2);
 	for (var i = 0; i < s.length / 2; i++) {
@@ -8,7 +24,7 @@ nacl.from_hex = function (s) {
 	}
 	return result;
 };
-
+*/
 var incNonce = function(nonce) {
 	var nnonce = nonce;
 	var i = nnonce.length-1;
@@ -80,8 +96,11 @@ var newConnection = function(req,user) {
 		user: user,
 		session: {
 			//nonce: nacl.to_hex(nonce),
-			pk: nacl.to_hex(sessionKeys.boxPk),
+			pk: nacl.to_hex(nacl.crypto_sign(sessionKeys.boxPk,serverKeys.signSkUint8))
 			//sessNonce: nacl.to_hex(sessNonce)
+		},
+		server : {
+			signPk: serverKeys.signPk
 		}
 	}
 }
