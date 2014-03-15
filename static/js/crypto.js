@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 var scrypt 	= scrypt_module_factory(134217728);
 var nacl 	= nacl_factory.instantiate();
 

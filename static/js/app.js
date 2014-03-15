@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 window.PMail 	= Ember.Application.create();
 PMail.searchindex	= null;
 PMail.domain 	= 'pik.io';
@@ -28,19 +28,21 @@ PMail.Router.map(function () {
 
 PMail.ApplicationController = Ember.ObjectController.extend({
 	isLoggedIn: false,
+	username: null,
 	fullname: ''
 });
 
 
 PMail.LoginController = Ember.ObjectController.extend({
 	needs: 'application',
-	username: null,
+	usernameBinding: 'controllers.application.username',
+	fullnameBinding: 'controllers.application.fullname',
 	password: null,
 	repeat: null,
 	isJoining: false,
 	errorMessage: null,
-	fullname: Ember.computed.alias('controllers.application.fullname'),
-	isLoggedIn: Ember.computed.alias('controllers.application.isLoggedIn'),
+	//fullname: Ember.computed.alias('controllers.application.fullname'),
+	isLoggedInBinding: 'controllers.application.isLoggedIn',
 	actions: {
 		changeJoin : function() {
 			this.set('isJoining',!this.get('isJoining'));
@@ -53,6 +55,7 @@ PMail.LoginRoute = Em.Route.extend({
 		login: function(){
 			var controller = this.get('controller');
 			controller.set('errorMessage',null);
+			/*
 			var retVal = loginUser(controller.get('username'),controller.get('password'));
 			if(retVal && retVal.sk && retVal.sessionKey) {
 				PMail.username = controller.get('username');
@@ -67,11 +70,36 @@ PMail.LoginRoute = Em.Route.extend({
 			else {
 				controller.set('errorMessage','Bad password');
 			}
+			*/
+			var password = (new jsSHA(controller.get('password'), 'TEXT')).getHash('SHA-512', 'HEX');
 
+			Ember.$.ajax({
+				url: '/login/'+controller.get('username'),
+				type: 'GET',
+				async: false,
+				data: {
+					p: password
+				}
+			}).done(function(res) {
+				if(res.status === 'OK') {
+					controller.set('isLoggedIn',true);
+					if(res.meta) {
+						controller.set('fullname', res.meta.fullname || '');
+					}
+				}
+				else {
+					controller.set('errorMessage','Bad password');
+				}
+			});
+
+			if(controller.get('isLoggedIn')) {
+				this.transitionTo('inbox');
+			}
 		},
 		join: function(){
 			var controller = this.get('controller');
 			controller.set('errorMessage',null);
+			/*
 			if(controller.get('password') !== controller.get('repeat')) {
 				controller.set('errorMessage','Passwords do not match !');
 				return;
@@ -90,6 +118,17 @@ PMail.LoginRoute = Em.Route.extend({
 			else {
 				controller.set('errorMessage','Cannot create that account');
 			}
+			*/
+			var password = (new jsSHA(controller.get('password'), 'TEXT')).getHash('SHA-512', 'HEX');
+			Ember.$.ajax({
+				url: '/login/'+controller.get('username'),
+				type: 'POST',
+				async: false,
+				contentType: 'application/json',
+				data: JSON.stringify({
+					p: password
+				})
+			});
 
 		}
 	}
@@ -97,7 +136,7 @@ PMail.LoginRoute = Em.Route.extend({
 
 PMail.InboxRoute = Ember.Route.extend({
 	beforeModel: function() {
-		if(!PMail.sk) this.transitionTo('login');
+		if(!this.controllerFor('application').get('isLoggedIn')) this.transitionTo('login');
 		PMail.searchindex = lunr(function () {
 		    this.field('subject', {boost: 3})
 		    this.field('body'),
@@ -108,6 +147,7 @@ PMail.InboxRoute = Ember.Route.extend({
 		});
 	},
 	model: function() {
+		/*
 		var controller = this.controllerFor('inbox');
 		return sendRequest('inboxes', {limit:10,firstElem:controller.get('firstElem')})
 		.then(function(mails) {
@@ -117,6 +157,9 @@ PMail.InboxRoute = Ember.Route.extend({
 			}
 			return mails.inboxes;
 		});
+		*/
+		var controller = this.controllerFor('inbox');
+		return this.store.find('inbox',{limit:controller.get('limit'),firstElem:controller.get('firstElem')});
 	},
 	actions: {
 		search: function(evt) {
@@ -144,7 +187,15 @@ PMail.InboxRoute = Ember.Route.extend({
 	}
 });
 
+PMail.InboxSerializer = DS.RESTSerializer.extend({
+	/*
+	normalizePayload: function(type, payload) {
+		var controller = this.get('controller');
+		
 
+	}
+	*/
+});
 
 PMail.InboxController = Ember.ArrayController.extend({
 	searchTXT: 	null,
@@ -209,7 +260,7 @@ PMail.InboxController = Ember.ArrayController.extend({
 
 PMail.InboxMailRoute = Em.Route.extend({
 	beforeModel: function() {
-		if(!PMail.sk) this.transitionTo('login');
+		if(!this.controllerFor('application').get('isLoggedIn')) this.transitionTo('login');
 	},
 	model: function(params) {
 		return this.store.find('inbox',params.mail_id);
@@ -271,18 +322,11 @@ PMail.InboxMailController = Ember.ObjectController.extend({
 
 PMail.SentRoute = Em.Route.extend({
 	beforeModel: function() {
-		if(!PMail.sk) this.transitionTo('login');
+		if(!this.controllerFor('application').get('isLoggedIn')) this.transitionTo('login');
 	},
 	model: function() {
 		var controller = this.controllerFor('sent');
-		return sendRequest('sents', {limit:10,firstElem:controller.get('firstElem')})
-		.then(function(mails) {
-			decodeMail(mails.inboxes);
-			if(mails.hasOwnProperty('hasNext')) {
-				controller.set('hasNext', mails.hasNext?true:false);
-			}
-			return mails.inboxes;
-		});
+		return this.store.find('sent',{limit:controller.get('limit'),firstElem:controller.get('firstElem')});
 	}
 });
 
@@ -348,7 +392,7 @@ PMail.SentController = Ember.ArrayController.extend({
 
 PMail.SentMailRoute = Em.Route.extend({
 	beforeModel: function() {
-		if(!PMail.sk) this.transitionTo('login');
+		if(!this.controllerFor('application').get('isLoggedIn')) this.transitionTo('login');
 	}
 });
 
@@ -362,7 +406,7 @@ Ember.Handlebars.helper('truncate', function(value, options) {
 
 PMail.ComposeRoute = Em.Route.extend({
 	beforeModel: function() {
-		if(!PMail.sk) this.transitionTo('login');
+		if(!this.controllerFor('application').get('isLoggedIn')) this.transitionTo('login');
 	},
 	model: function() {
 		var model = Ember.Object.create({
@@ -388,11 +432,13 @@ PMail.ComposeView = Ember.View.extend({
 });
 
 PMail.ComposeController = Ember.ObjectController.extend({
+	needs: 'application',
+	usernameBinding: 'controllers.application.username',
 	toInError: false,
 	actions: {
 		send: function(evt) {
 			var controller = this;
-			this.set('toInError', false);
+			controller.set('toInError', false);
 			var to = controller.get('model.to');
 			if(to && to.length > 0) {
 				to = to.split(',');
@@ -400,13 +446,20 @@ PMail.ComposeController = Ember.ObjectController.extend({
 					to[i] = {address:to[i].trim()};
 				}
 				var body = Ember.$('#inputBody').cleditor()[0].doc.body;
-				newMail({
-					to:to,
-					from:[{address:PMail.username}],
-					subject:controller.get('model.subject'),
-					text:body.innerText,
-					html:body.innerHTML,
-					headers:{date:new Date()}
+				Ember.$.ajax({
+					url: '/send',
+					type: 'POST',
+					async: false,
+					contentType: 'application/json',
+					data: JSON.stringify({
+						to:to,
+						from:[{address:controller.get('username')}],
+						subject:controller.get('model.subject'),
+						body: {
+							text:body.innerText,
+							html:body.innerHTML
+						}
+					})
 				})
 				.done(function() {
 					if(PMail.hasOwnProperty('composeMail')) {
@@ -425,19 +478,35 @@ PMail.ComposeController = Ember.ObjectController.extend({
 
 PMail.ProfileController = Ember.ObjectController.extend({
 	needs: 'application',
-	fullname: Ember.computed.alias('controllers.application.fullname'),
+	fullnameBinding: 'controllers.application.fullname',
 	actions: {
 		send: function(evt) {
 			var fullname = this.get('fullname');
-			if(fullname && fullname.length > 2)
-				updateUser(fullname);
+			if(fullname && fullname.length > 2) {
+				Ember.$.ajax({
+					url: '/update',
+					type: 'PUT',
+					async: false,
+					contentType: 'application/json',
+					data: JSON.stringify({
+						meta: {
+							fullname : fullname
+						}
+					})
+				})
+				.done(function(result) {
+					if(result.status === 'OK') {
+						
+					}
+				});
+			}
 		}
 	}
 });
 
 PMail.ProfileRoute = Em.Route.extend({
 	beforeModel: function() {
-		if(!PMail.sk) this.transitionTo('login');
+		if(!this.controllerFor('application').get('isLoggedIn')) this.transitionTo('login');
 	}
 });
 

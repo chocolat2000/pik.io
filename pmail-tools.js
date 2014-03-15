@@ -1,4 +1,6 @@
+'use strict';
 var nacl 		= require('js-nacl').instantiate();
+var scrypt 		= require('scrypt');
 var serverKeys 	= {};
 
 require('fs').readFile('pmail.json',{encoding:'utf-8',flag:'r'},function(err,data) {
@@ -14,17 +16,12 @@ require('fs').readFile('pmail.json',{encoding:'utf-8',flag:'r'},function(err,dat
 	}
 });
 
+scrypt.kdf.config.saltEncoding 		= 'hex';
+scrypt.kdf.config.keyEncoding		= 'hex';
+scrypt.kdf.config.outputEncoding 	= 'hex';
+scrypt.kdf.config.defaultSaltSize 	= 32;
+scrypt.kdf.config.outputLength 		= 32;
 
-
-/*
-nacl.from_hex = function (s) {
-	var result = new Uint8Array(s.length / 2);
-	for (var i = 0; i < s.length / 2; i++) {
-		 result[i] = parseInt(s.substr(2*i,2),16);
-	}
-	return result;
-};
-*/
 var incNonce = function(nonce) {
 	var nnonce = nonce;
 	var i = nnonce.length-1;
@@ -69,23 +66,19 @@ var encodeResponse = function(req,res) {
 	
 }
 
-var decodeMail = function(mail,pk) {
+var decodeMail = function(mail,userSk) {
 	var nonce = nacl.from_hex(mail.nonce);
-	var n_key = nacl.from_hex(mail.key);
+	var pk = nacl.from_hex(mail.pk);
 	var body = nacl.from_hex(mail.body);
 	try {
-		var d_key = nacl.decode_utf8(nacl.crypto_box_open(n_key,nonce,pk,serverSk)).split(':');
-		var key = nacl.from_hex(d_key[0]);
-		var n = nacl.from_hex(d_key[1]);
-		var message = nacl.crypto_secretbox_open(body,n,key);
-		return JSON.parse(nacl.decode_utf8(message));
-
+		mail.body = nacl.crypto_box_open(body,nonce,pk,userSk);
 	}
 	catch(err) {
-		return null;
+		mail.body = null;
 	}
 }
 
+/*
 var newConnection = function(req,user) {
 	var sessionKeys = nacl.crypto_box_keypair();
 	//req.session.nonce = nacl.crypto_secretbox_random_nonce();
@@ -104,16 +97,91 @@ var newConnection = function(req,user) {
 		}
 	}
 }
+*/
 
-var newUser = function(user) {
-
+var encodeMail = function(mail,recipientPk) {
+	var mailKeys = nacl.crypto_box_keypair();
+	var nonce = nacl.crypto_box_random_nonce();
+	mail.nonce = nacl.to_hex(nonce);
+	mail.pk = nacl.to_hex(mailKeys.boxPk);
+	mail.body = nacl.to_hex(
+		nacl.crypto_box(mail.body,nonce,recipientPk,mailKeys.boxSk)
+		);
 }
+
+var skFromUser = function(password,user) {
+	var res = null;
+	try {
+		var passHash = scrypt.kdf(password,{'N':65536, 'r':8, 'p': 1},scrypt.kdf.config.outputLength,user.salt);
+		var nonce = nacl.from_hex(user.nonce);
+		var p = nacl.from_hex(passHash.hash);
+		res = {};
+		res.pk = nacl.from_hex(user.pk);
+		res.sk = nacl.crypto_secretbox_open(nacl.from_hex(user.sk),nonce,nacl.from_hex(passHash.hash));
+		res.p = p;
+	}
+	catch(err) {
+		console.log(err);
+		res = null;
+	}
+	return res;
+}
+
+var newUser = function(password) {
+	var res = null;
+	try {
+		res = scrypt.kdf(password,{'N':65536, 'r':8, 'p': 1});
+		var keypair = nacl.crypto_box_keypair();
+		var nonce = nacl.crypto_secretbox_random_nonce();
+		var p = nacl.from_hex(res.hash);
+		delete res.hash;
+
+		res.nonce = nacl.to_hex(nonce);
+		res.pk = nacl.to_hex(keypair.boxPk);
+		res.sk = nacl.to_hex(nacl.crypto_secretbox(keypair.boxSk,nonce,p));
+		res.box = keypair;
+		res.p = p;
+	}
+	catch(err) {
+		console.log(err);
+		res = null;
+	}
+	return res;
+}
+
+var decodeUserMeta = function(meta,password) {
+	var nonce = nacl.from_hex(meta.nonce);
+	return JSON.parse(nacl.decode_utf8(
+		nacl.crypto_secretbox_open(
+			nacl.from_hex(meta.value),
+			nonce,
+			password)
+		)
+	);
+}
+
+var encodeUserMeta = function(meta,password) {
+	var nonce = nacl.crypto_secretbox_random_nonce();
+	return {
+		nonce : nacl.to_hex(nonce),
+		value : nacl.to_hex(
+			nacl.crypto_secretbox(
+				nacl.encode_utf8(JSON.stringify(meta)),
+				nonce,
+				password)
+			)
+	}
+}
+
 
 module.exports = {
 	decodeRequest: decodeRequest,
 	encodeResponse: encodeResponse,
 	decodeMail: decodeMail,
-	newConnection: newConnection,
+	encodeMail: encodeMail,
+	skFromUser: skFromUser,
+	decodeUserMeta: decodeUserMeta,
+	encodeUserMeta: encodeUserMeta,
 	newUser: newUser,
 	randomSession: randomSession,
 	nacl: nacl
