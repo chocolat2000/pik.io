@@ -279,140 +279,143 @@ app
 		}
 	})
 	.get('/inboxes', function(req, res){
-		var limit = req.query.hasOwnProperty('limit') ? req.query.limit : 20;
-		var firstElem = req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0;
-		var folder = 'inbox';
-		var response = {inboxes: 'Internal Error'};
-		inboxes.query(
-			{limit:limit,key:[req.session.username,folder],descending:true,skip:firstElem},
-			function(err, results) {
-				var keys = new Array();
-				for(var id in results) {
-					keys.push(results[id].id);
+		var params = {
+			session: req.session,
+			folder: 'inbox',
+			limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
+			firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
+		};
+		tools.getMails(params, function(mails) {
+			res.send({
+				inboxes: mails,
+				meta : {
+					message : 'OK',
+					hasNext : mails.length === params.limit,
+					hasPrevious : params.firstElem > 0
 				}
-				mailsdb.getMulti(keys, {}, function(err, results) {
-					var inboxes = new Array();
-					for(var id in results) {
-						if(results[id].value) {
-							tools.decodeMail(results[id].value,req.session.sk);
-							results[id].value.body = JSON.parse(tools.nacl.decode_utf8(results[id].value.body));
-							results[id].value.body.id = id;
-							//delete(results[id].value.username);
-							inboxes.push(results[id].value.body);
-						}
-					}
-					response.meta = {
-						message : 'OK',
-						hasNext : keys.length === limit,
-						hasPrevious : firstElem > 0
-					};
-					response.inboxes = inboxes;
-					res.send(response);
-				});
+			});
 		});
 
 	})
 	.get('/sents', function(req, res){
-		var limit = req.query.hasOwnProperty('limit') ? req.query.limit : 20;
-		var firstElem = req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0;
-		var folder = 'sent';
-		var response = {sents: new Array(),meta:{message: 'Internal Error'}};
-		inboxes.query(
-			{limit:limit,key:[req.session.username,folder],descending:true,skip:firstElem},
-			function(err, results) {
-				var keys = new Array();
-				for(var id in results) {
-					keys.push(results[id].id);
+		var params = {
+			session: req.session,
+			folder: 'sent',
+			limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
+			firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
+		};
+		tools.getMails(params, function(mails) {
+			res.send(
+			{
+				sents: mails,
+				meta : {
+					message : 'OK',
+					hasNext : mails.length === params.limit,
+					hasPrevious : params.firstElem > 0
 				}
-				mailsdb.getMulti(keys, {}, function(err, results) {
-					var sents = new Array();
-					for(var id in results) {
-						if(results[id].value) {
-							tools.decodeMail(results[id].value,req.session.sk);
-							results[id].value.body = JSON.parse(tools.nacl.decode_utf8(results[id].value.body));
-							results[id].value.body.id = id;
-							//delete(results[id].value.username);
-							sents.push(results[id].value.body);
-						}
-					}
-					response.meta = {
-						message : 'OK',
-						hasNext : keys.length === limit,
-						hasPrevious : firstElem > 0
-					};
-					response.sents = sents;
-					res.send(response);
-				});
+			});
 		});
+		
 
 	})
-	.post('/send', function(req, res){
+	.get('/trashes', function(req, res){
+		var params = {
+			session: req.session,
+			folder: 'trash',
+			limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
+			firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
+		};
+		tools.getMails(params, function(mails) {
+			res.send(
+			{
+				sents: mails,
+				meta : {
+					message : 'OK',
+					hasNext : mails.length === params.limit,
+					hasPrevious : params.firstElem > 0
+				}
+			});
+		});
+		
+
+	})
+	.delete('/inboxes/:mailid', function(req, res){
+		tools.deleteMail(req.params.mailid, function(result) {
+			var params = {
+				session: req.session,
+				folder: 'inbox',
+				limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
+				firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
+			};
+			tools.getMails(params, function(mails) {
+				res.send(
+				{
+					inboxes: mails,
+					meta : {
+						message : 'OK',
+						hasNext : mails.length === params.limit,
+						hasPrevious : params.firstElem > 0
+					}
+				});
+			});
+		});
+	})
+	.delete('/sents/:mailid', function(req, res){
+		tools.deleteMail(req.params.mailid, function(result) {
+			var params = {
+				session: req.session,
+				folder: 'sent',
+				limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
+				firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
+			};
+			tools.getMails(params, function(mails) {
+				res.send(
+				{
+					sents: mails,
+					meta : {
+						message : 'OK',
+						hasNext : mails.length === params.limit,
+						hasPrevious : params.firstElem > 0
+					}
+				});
+			});
+		});
+	})
+	.post('/sents', function(req, res){
+		var mail = req.body.sent;
+		tools.sendpMail(mail,[req.session.username],req.session.pk,'sent', function(result) {
+			res.send({
+				sent:result,
+				meta: {
+					message: 'OK'
+				}
+			});
+		});
 		var pMailTo = new Array();
 		var extTo = new Array();
 		var fullPMail = new RegExp('^(.+)@('+domains.join('|')+')$','i');
 		var isMail = new RegExp('^(.+)@(.+)$','i');
-		//console.log(req.body);
-		for(var i = 0; i<req.body.to.length; i++) {
-			if(isMail.exec(req.body.to[i].address)) {
-				var fullTest = fullPMail.exec(req.body.to[i].address);
+
+		for(var i = 0; i<mail.to.length; i++) {
+			if(isMail.exec(mail.to[i].address)) {
+				var fullTest = fullPMail.exec(mail.to[i].address);
 				if(fullTest) {
 					pMailTo.push(fullTest[1]);
 				}
 				else {
-					extTo.push(req.body.to[i].address);
+					extTo.push(mail.to[i].address);
 				}
 			}
 			else {
-				pMailTo.push(req.body.to[i].address);
+				pMailTo.push(mail.to[i].address);
 			}
 		}
 
-		req.body.date = new Date();
 
-		var message = tools.nacl.encode_utf8(JSON.stringify(req.body));
-		var users = {};
-		var mailToMe = null;
-
-		usersdb.getMulti(pMailTo, {}, function(err, results) {
-			for(var user in results) {
-				if(results[user].hasOwnProperty('value')) {
-					var mail = {
-							username:user,
-							body:message,
-							folder:'inbox'
-					};
-					tools.encodeMail(mail,req.session.pk);
-					var mailId = (+new Date).toString(36)+'-pmailInt';
-					mailsdb.set(mailId, mail, function(err, results) {
-						if(err) {
-							console.log(err);
-							res.send({status: 'NOK'});
-						}
-					});
-					if(mail.username === req.session.username) {
-						mail.folder = 'sent';
-						mailToMe = mail;
-					}
-				}
-			}
+		tools.sendpMail(mail,pMailTo,req.session.pk,'inbox',function(result) {
+			
 		});
-
-		if(!mailToMe) {
-			mailToMe = {
-				username: req.session.username,
-				body:message,
-				folder:'sent'
-			}
-			tools.encodeMail(mailToMe,req.session.pk);
-		}
-		mailsdb.set((+new Date).toString(36)+'-pmailInt', mailToMe, function(err, results) {
-			if(err) {
-				console.log(err);
-				res.send({status: 'NOK'});
-			}
-		});		
-
-		res.send({status: 'OK'});
+		
 	})
 	.put('/update', function(req, res) {
 		if(!req.body.meta) {

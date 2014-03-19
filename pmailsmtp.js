@@ -3,6 +3,7 @@ var couchbase	= require('couchbase');
 var nacl 		= require('js-nacl').instantiate();
 var simplesmtp	= require('simplesmtp');
 var mailparser 	= require('mailparser').MailParser;
+var tools 		= require('./pmail-tools');
 
 var domains = ['pik.io'];
 var smtp = simplesmtp.createServer({

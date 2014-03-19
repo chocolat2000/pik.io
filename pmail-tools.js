@@ -1,7 +1,15 @@
 'use strict';
 var nacl 		= require('js-nacl').instantiate();
 var scrypt 		= require('scrypt');
+var couchbase	= require('couchbase');
 var serverKeys 	= {};
+var domains = ['pik.io'];
+
+
+var usersdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
+var mailsdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
+var inboxes = mailsdb.view('inboxes','by_username');
+
 
 require('fs').readFile('pmail.json',{encoding:'utf-8',flag:'r'},function(err,data) {
 	try {
@@ -71,11 +79,12 @@ var decodeMail = function(mail,userSk) {
 	var pk = nacl.from_hex(mail.pk);
 	var body = nacl.from_hex(mail.body);
 	try {
-		mail.body = nacl.crypto_box_open(body,nonce,pk,userSk);
+		body = nacl.crypto_box_open(body,nonce,pk,userSk);
 	}
 	catch(err) {
-		mail.body = null;
+		body = null;
 	}
+	return body
 }
 
 /*
@@ -102,11 +111,19 @@ var newConnection = function(req,user) {
 var encodeMail = function(mail,recipientPk) {
 	var mailKeys = nacl.crypto_box_keypair();
 	var nonce = nacl.crypto_box_random_nonce();
-	mail.nonce = nacl.to_hex(nonce);
-	mail.pk = nacl.to_hex(mailKeys.boxPk);
-	mail.body = nacl.to_hex(
-		nacl.crypto_box(mail.body,nonce,recipientPk,mailKeys.boxSk)
-		);
+	var encoded = mail;
+	try {
+		encoded.nonce = nacl.to_hex(nonce);
+		encoded.pk = nacl.to_hex(mailKeys.boxPk);
+		encoded.body = nacl.to_hex(
+				nacl.crypto_box(mail.body,nonce,recipientPk,mailKeys.boxSk)
+			);
+	}
+	catch(err) {
+		encoded = null;
+	}
+
+	return encoded;
 }
 
 var skFromUser = function(password,user) {
@@ -173,6 +190,83 @@ var encodeUserMeta = function(meta,password) {
 	}
 }
 
+var getMails = function(params, callback) {
+	var limit = params.limit || 20;
+	var folder = params.folder || 'inbox';
+	var firstElem = params.firstElem || 0;
+	var session = params.session;
+
+	inboxes.query(
+		{limit:limit,key:[session.username,folder],descending:true,skip:firstElem},
+		function(err, results) {
+			var keys = new Array();
+			for(var id in results) {
+				keys.push(results[id].id);
+			}
+			mailsdb.getMulti(keys, {}, function(err, results) {
+				var result = new Array();
+				for(var id in results) {
+					if(results[id].value) {
+						var mail = decodeMail(results[id].value,session.sk);
+						mail = JSON.parse(nacl.decode_utf8(mail));
+						mail.id = id;
+						result.push(mail);
+					}
+				}
+				callback(result);
+			});
+	});
+}
+
+var deleteMail = function(mailid, callback) {
+	mailsdb.get(mailid, {},function(err, result) {
+		if(err) {
+			console.log(err);
+			callback({status: 'NOK'});
+			return;
+		}
+		result.value.folder = 'trash';
+		mailsdb.set(mailid,result.value,function(err, result) {
+			if(err) {
+				console.log(err);
+				callback({status: 'NOK'});
+				return;
+			}
+			callback({status: 'OK'});
+		});
+	});
+}
+
+var sendpMail = function(mail, to, senderPk, folder, callback) {
+
+	var _mail = mail;
+	_mail.date = new Date();
+
+	var message = nacl.encode_utf8(JSON.stringify(_mail));
+
+	usersdb.getMulti(to, {}, function(err, results) {
+		for(var user in results) {
+			if(results[user].hasOwnProperty('value')) {
+				var encoded = encodeMail({
+						username:user,
+						body:message,
+						folder:folder
+					},senderPk);
+				var mailId = (+new Date).toString(36)+'-pmailInt';
+				mailsdb.set(mailId, encoded, function(err, results) {
+					if(err) {
+						console.log(err);
+					}
+					else {
+						_mail.id = mailId;
+						callback(_mail);
+					}
+				});
+			}
+		}
+	});
+}
+
 
 module.exports = {
 	decodeRequest: decodeRequest,
@@ -183,6 +277,8 @@ module.exports = {
 	decodeUserMeta: decodeUserMeta,
 	encodeUserMeta: encodeUserMeta,
 	newUser: newUser,
+	getMails: getMails,
+	deleteMail: deleteMail,
 	randomSession: randomSession,
-	nacl: nacl
+	sendpMail: sendpMail,
 }

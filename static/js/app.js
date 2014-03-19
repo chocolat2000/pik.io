@@ -206,22 +206,7 @@ PMail.InboxController = Ember.ArrayController.extend({
 	actions: {
 		delete: function(mail) {
 			if(!mail.hasOwnProperty('id')) return;
-			var controller = this;
-			var limit = controller.get('limit');
-			sendRequest('toTrash',{id:mail.id})
-			.then(function() {
-				sendRequest('inboxes', {limit:limit})
-				.then(function(mails) {
-					decodeMail(mails.inboxes);
-					if(mails.hasOwnProperty('hasPrevious')) {
-						controller.set('hasPrevious', mails.hasPrevious?true:false);
-					}
-					if(mails.hasOwnProperty('hasNext')) {
-						controller.set('hasNext', mails.hasNext?true:false);
-					}
-					controller.set('model',mails.inboxes);
-				});
-			});
+			mail.destroyRecord();
 		},
 		nextPage: function(event) {
 			if(!this.get('hasNext')) return;
@@ -339,21 +324,7 @@ PMail.SentController = Ember.ArrayController.extend({
 	actions: {
 		delete: function(mail) {
 			if(!mail.hasOwnProperty('id')) return;
-			var controller = this;
-			sendRequest('toTrash',{id:mail.id})
-			.then(function() {
-				sendRequest('sents', {limit:controller.get('limit')})
-				.then(function(mails) {
-					decodeMail(mails.inboxes);
-					if(mails.hasOwnProperty('hasPrevious')) {
-						controller.set('hasPrevious', mails.hasPrevious?true:false);
-					}
-					if(mails.hasOwnProperty('hasNext')) {
-						controller.set('hasNext', mails.hasNext?true:false);
-					}
-					controller.set('model',mails.inboxes);
-				});
-			});
+			mail.destroyRecord();
 		},
 		nextPage: function(event) {
 			if(!this.get('hasNext')) return;
@@ -446,28 +417,17 @@ PMail.ComposeController = Ember.ObjectController.extend({
 					to[i] = {address:to[i].trim()};
 				}
 				var body = Ember.$('#inputBody').cleditor()[0].doc.body;
-				Ember.$.ajax({
-					url: '/send',
-					type: 'POST',
-					async: false,
-					contentType: 'application/json',
-					data: JSON.stringify({
-						to:to,
-						from:[{address:controller.get('username')}],
-						subject:controller.get('model.subject'),
-						body: {
-							text:body.innerText,
-							html:body.innerHTML
-						}
-					})
-				})
-				.done(function() {
-					if(PMail.hasOwnProperty('composeMail')) {
-						delete PMail.composeMail;
+				controller.store.createRecord('sent', {
+					to:to,
+					from:[{address:controller.get('username')}],
+					subject:controller.get('model.subject'),
+					body: {
+						text:body.innerText,
+						html:body.innerHTML
 					}
-					controller.transitionToRoute('inbox');
+				}).save().then(function(mail) {
+					controller.transitionToRoute('sent');
 				});
-
 			}
 			else {
 				controller.set('toInError', true);
