@@ -128,7 +128,21 @@ PMail.LoginRoute = Em.Route.extend({
 				data: JSON.stringify({
 					p: password
 				})
+			}).done(function(res) {
+				if(res.status === 'OK') {
+					controller.set('isLoggedIn',true);
+					if(res.meta) {
+						controller.set('fullname', res.meta.fullname || '');
+					}
+				}
+				else {
+					controller.set('errorMessage','Bad password');
+				}
 			});
+
+			if(controller.get('isLoggedIn')) {
+				this.transitionTo('inbox');
+			}
 
 		}
 	}
