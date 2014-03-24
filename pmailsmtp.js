@@ -3,7 +3,7 @@ var couchbase	= require('couchbase');
 var nacl 		= require('js-nacl').instantiate();
 var simplesmtp	= require('simplesmtp');
 var mailparser 	= require('mailparser').MailParser;
-var tools 		= require('./pmail-tools');
+//var tools 		= require('./pmail-tools');
 
 var domains = ['pik.io'];
 var smtp = simplesmtp.createServer({
@@ -15,15 +15,6 @@ var smtp = simplesmtp.createServer({
 
 var usersdb =  new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
 var mailsdb =  new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
-
-nacl.from_hex = function (s) {
-	var result = new Uint8Array(s.length / 2);
-	for (var i = 0; i < s.length / 2; i++) {
-		 result[i] = parseInt(s.substr(2*i,2),16);
-	}
-	return result;
-};
-
 
 smtp.listen(2525, function(err) {
 	if(err)

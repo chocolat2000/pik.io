@@ -1,14 +1,14 @@
 {
   "name": "pmail",
   "description": "TODO",
-  "version" : "0.1.0",
+  "version" : "0.2.0",
   "author": "me",
   "dependencies": {
     "express": "3.x",
-    "connect-memcached": ">=0.0.6",
+//    "connect-memcached": ">=0.0.6",
     "couchbase": "1.x",
-    "js-nacl": ">=0.5.x",
-    "scrypt": ">=3.x",
+    "js-nacl": "0.6.x",
+    "scrypt": "3.0.x",
     "simplesmtp": "0.3.x",
     "mailparser": "0.4.x",
     "mailcomposer": "0.2.x"

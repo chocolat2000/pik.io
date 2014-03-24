@@ -1,22 +1,9 @@
 'use strict';
 var express		= require('express');
-//var couchbase	= require('couchbase');
 //var MemcachedStore = require('connect-memcached')(express);
 var tools 		= require('./pmail-tools');
-var simplesmtp	= require('simplesmtp');
-var MailComposer = require('mailcomposer').MailComposer;
+var app 		= express();
 
-var app 	= express();
-//var usersdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
-//var mailsdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
-//var inboxes = mailsdb.view('inboxes','by_username');
-
-var mailPool = simplesmtp.createClientPool(587, 'localhost', {
-	auth : {
-		user: 'pikio',
-		pass: 'pikio'
-	}
-});
 //var domains = ['pik.io'];
 
 
@@ -24,7 +11,7 @@ app.configure(function(){
 	app
 		.use(express.favicon())
 		.use(express.compress())
-		.use(express.cookieParser('zgeqrheqrhqeber'))
+		.use(express.cookieParser(tools.randomSession(32)))
 		//.use(express.session({
 		//	secret: tools.randomSession(32),
 		//	store: new MemcachedStore({
@@ -97,14 +84,18 @@ app
 	.get('/inboxes', function(req, res){
 		if(req.session.user) {
 			var params = {
-				session: req.session,
 				folder: 'inbox',
 				limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
 				firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
 			};
 			tools.getMails(req.session.user,params,function(err,mails) {
 				if(err) {
-					res.send({status: 'NOK'});
+					res.send({
+						inboxes: [],
+						meta : {
+							status: 'NOK'
+						}
+					});
 				}
 				else {
 					res.send({
@@ -129,7 +120,12 @@ app
 			};
 			tools.getMails(req.session.user,params,function(err,mails) {
 				if(err) {
-					res.send({status: 'NOK'});
+					res.send({
+						sents: [],
+						meta : {
+							status: 'NOK'
+						}
+					});
 				}
 				else {
 					res.send({
@@ -148,51 +144,61 @@ app
 	.get('/trashes', function(req, res){
 		if(req.session.user) {
 			var params = {
-				session: req.session,
 				folder: 'trash',
 				limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
 				firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
 			};
 			req.session.user.getMails(params, function(err,mails) {
 				if(err) {
-					res.send({status: 'NOK'});
-					return;
+					res.send({
+						trashes: [],
+						meta : {
+							status: 'NOK'
+						}
+					});
 				}
-				res.send({
-					trashes: mails,
-					meta : {
-						message : 'OK',
-						hasNext : mails.length === params.limit,
-						hasPrevious : params.firstElem > 0
-					}
-				});
+				else {
+					res.send({
+						trashes: mails,
+						meta : {
+							message : 'OK',
+							hasNext : mails.length === params.limit,
+							hasPrevious : params.firstElem > 0
+						}
+					});
+				}
 			});
 		}
 
 	})
 	.delete('/inboxes/:mailid', function(req, res){
 		if(req.session.user) {
-			req.session.user.deleteMail(req.params.mailid, function(err) {
+			tools.deleteMail(req.params.mailid, function(err) {
 				if(!err) {
 					var params = {
-						session: req.session,
 						folder: 'inbox',
 						limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
 						firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
 					};
-					req.session.user.getMails(params, function(err,mails) {
+					tools.getMails(req.session.user,params,function(err,mails) {
 						if(err) {
-							res.send({status: 'NOK'});
-							return;
+							res.send({
+								inboxes: [],
+								meta : {
+									status: 'NOK'
+								}
+							});
 						}
-						res.send({
-							inboxes: mails,
-							meta : {
-								message : 'OK',
-								hasNext : mails.length === params.limit,
-								hasPrevious : params.firstElem > 0
-							}
-						});
+						else {
+							res.send({
+								inboxes: mails,
+								meta : {
+									message : 'OK',
+									hasNext : mails.length === params.limit,
+									hasPrevious : params.firstElem > 0
+								}
+							});
+						}
 					});
 				}
 			});
@@ -200,27 +206,32 @@ app
 	})
 	.delete('/sents/:mailid', function(req, res){
 		if(req.session.user) {
-			req.session.user.deleteMail(req.params.mailid, function(err) {
+			tools.deleteMail(req.params.mailid, function(err) {
 				if(!err) {
 					var params = {
-						session: req.session,
 						folder: 'sent',
 						limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
 						firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
 					};
-					req.session.user.getMails(params, function(err,mails) {
+					tools.getMails(req.session.user,params,function(err,mails) {
 						if(err) {
-							res.send({status: 'NOK'});
-							return;
+							res.send({
+								sents: [],
+								meta : {
+									status: 'NOK'
+								}
+							});
 						}
-						res.send({
-							sents: mails,
-							meta : {
-								message : 'OK',
-								hasNext : mails.length === params.limit,
-								hasPrevious : params.firstElem > 0
-							}
-						});
+						else {
+							res.send({
+								sents: mails,
+								meta : {
+									message : 'OK',
+									hasNext : mails.length === params.limit,
+									hasPrevious : params.firstElem > 0
+								}
+							});
+						}
 					});
 				}
 			});
@@ -228,27 +239,32 @@ app
 	})
 	.delete('/trashes/:mailid', function(req, res){
 		if(req.session.user) {
-			req.session.user.deleteMail(req.params.mailid, function(err) {
+			tools.deleteMail(req.params.mailid, function(err) {
 				if(!err) {
 					var params = {
-						session: req.session,
 						folder: 'trash',
 						limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
 						firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
 					};
 					req.session.user.getMails(params, function(err,mails) {
 						if(err) {
-							res.send({status: 'NOK'});
-							return;
+							res.send({
+								trashes: [],
+								meta : {
+									status: 'NOK'
+								}
+							});
 						}
-						res.send({
-							trashes: mails,
-							meta : {
-								message : 'OK',
-								hasNext : mails.length === params.limit,
-								hasPrevious : params.firstElem > 0
-							}
-						});
+						else {
+							res.send({
+								trashes: mails,
+								meta : {
+									message : 'OK',
+									hasNext : mails.length === params.limit,
+									hasPrevious : params.firstElem > 0
+								}
+							});
+						}
 					});
 				}
 			});

@@ -2,8 +2,9 @@
 var nacl 		= require('js-nacl').instantiate();
 var scrypt 		= require('scrypt');
 var couchbase	= require('couchbase');
+var simplesmtp	= require('simplesmtp');
+var mailcomposer = require('mailcomposer').MailComposer;
 var domains 	= ['pik.io'];
-var EventEmitter = require('events').EventEmitter;
 
 var usersdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
 var mailsdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
@@ -14,6 +15,13 @@ scrypt.kdf.config.keyEncoding		= 'hex';
 scrypt.kdf.config.outputEncoding 	= 'hex';
 scrypt.kdf.config.defaultSaltSize 	= 32;
 scrypt.kdf.config.outputLength 		= 32;
+
+var mailPool = simplesmtp.createClientPool(587, 'localhost', {
+	auth : {
+		user: 'pikio',
+		pass: 'pikio'
+	}
+});
 
 module.exports.randomSession = function(size) {
 	return nacl.to_hex(nacl.random_bytes(size));
@@ -36,13 +44,13 @@ module.exports.getMails = function(user,params,callback) {
 	var limit = params.limit || 20;
 	var folder = params.folder || 'inbox';
 	var firstElem = params.firstElem || 0;
-	var _user = user;
+	var username = user.username;
+	var userSk = new Uint8Array(user.sk);
 
 	inboxes.query(
-		{limit:limit,key:[user.username,folder],descending:true,skip:firstElem},
+		{limit:limit,key:[username,folder],descending:true,skip:firstElem},
 		function(err, results) {
 			if(err) {
-				console.log(err);
 				callback(err,{});
 				return;
 			}
@@ -50,27 +58,30 @@ module.exports.getMails = function(user,params,callback) {
 			for(var id in results) {
 				keys.push(results[id].id);
 			}
-			var result = new Array();
 			if(keys.length > 0) {
 				mailsdb.getMulti(keys, {}, function(err, results) {
 					if(err) {
-						console.log(2,err);
 						callback(err,{});
-						return;
 					}
-					for(var id in results) {
-						if(results[id].value) {
-							var mail = decodeMail(results[id].value,_user.sk);
-							if(mail) {
-								mail = JSON.parse(nacl.decode_utf8(mail));
-								mail.id = id;
-								result.push(mail);
+					else {
+						var result = new Array();
+						for(var id in results) {
+							if(results[id].value) {
+								var mail = decodeMail(results[id].value,userSk);
+								if(mail) {
+									mail = JSON.parse(nacl.decode_utf8(mail));
+									mail.id = id;
+									result.push(mail);
+								}
 							}
 						}
+						callback(null,result);
 					}
 				});
 			}
-			callback(null,result);
+			else {
+				callback(null,[]);
+			}
 		}
 	);
 };
@@ -114,28 +125,27 @@ module.exports.updateUser = function(meta, callback) {
 
 module.exports.sendMail = function(user,mail,callback) {
 
-	var _mail = mail;
-	_mail.date = new Date();
+	mail.date = new Date();
 
-	var senderPk = user.pk;
-	var message = nacl.encode_utf8(JSON.stringify(_mail));
+	var recipentPk = new Uint8Array(user.pk);
+	var message = nacl.encode_utf8(JSON.stringify(mail));
 
 	var mailId = (+new Date).toString(36)+'-pmailInt';
-	mailsdb.set(
-		mailId,
-		encodeMail({
-			username:user.username,
-			body:message,
-			folder:'sent'
-		},senderPk),
-		function(err, results) {
+	var encoded = encodeMail(message,recipentPk);
+	mailsdb.set(mailId,{
+		username:user.username,
+		body:encoded.body,
+		nonce:encoded.nonce,
+		pk:encoded.pk,
+		folder:'sent'
+	},function(err, results) {
 			if(err) {
 				callback(err,{});
 				return;
 			}
-			_mail.id = mailId;
-			callback(null,_mail);
-			delete _mail.id;
+
+			mail.id = mailId;
+			callback(null,mail);
 		}
 	);
 
@@ -161,14 +171,16 @@ module.exports.sendMail = function(user,mail,callback) {
 
 	usersdb.getMulti(pMailTo, {}, function(err, results) {
 		for(var user in results) {
-			if(results[user].hasOwnProperty('value')) {
-				var encoded = encodeMail({
-						username:user,
-						body:message,
-						folder:'inbox'
-					},senderPk);
+			if(results[user].hasOwnProperty('value') && results[user].value.hasOwnProperty('pk')) {
 				var mailId = (+new Date).toString(36)+'-pmailInt';
-				mailsdb.set(mailId, encoded, function(err, results) {
+				var encoded = encodeMail(message,nacl.from_hex(results[user].value.pk));
+				mailsdb.set(mailId, {
+						username:user,
+						body:encoded.body,
+						nonce:encoded.nonce,
+						pk:encoded.pk,
+						folder:'inbox'
+					}, function(err, results) {
 					if(err) {
 						console.log(err);
 					}
@@ -176,35 +188,46 @@ module.exports.sendMail = function(user,mail,callback) {
 			}
 		}
 	});
+
+	var extMail = new mailcomposer();
+	extMail.setMessageOption(mail);
+
+	mailPool.sendMail(extMail,function(err,message) {
+		if(err) {
+			console.log(err);
+			console.log(message);
+		}
+	});
 };
 
 
-var decodeMail = function(mail,userSk) {
+var decodeMail = function(mail,recipentSk) {
 	var nonce = nacl.from_hex(mail.nonce);
-	var pk = nacl.from_hex(mail.pk);
-	var body = nacl.from_hex(mail.body);
+	var senderPk = nacl.from_hex(mail.pk);
+	var decoded = null;
 
 	try {
-		console.log(body,nonce,pk,userSk);
-		body = nacl.crypto_box_open(body,nonce,pk,userSk);
+		decoded = nacl.crypto_box_open(nacl.from_hex(mail.body),nonce,senderPk,recipentSk);
 	}
 	catch(err) {
 		console.log(err);
-		body = null;
+		decoded = null;
 	}
-	return body
+
+	return decoded;
 };
 
-var encodeMail = function(mail,recipientPk) {
-	var mailKeys = nacl.crypto_box_keypair();
+var encodeMail = function(mail,recipentPk) {
 	var nonce = nacl.crypto_box_random_nonce();
-	var encoded = mail;
+	var box = nacl.crypto_box_keypair();
+	var encoded = null;
+
 	try {
-		encoded.nonce = nacl.to_hex(nonce);
-		encoded.pk = nacl.to_hex(mailKeys.boxPk);
-		encoded.body = nacl.to_hex(
-				nacl.crypto_box(mail.body,nonce,recipientPk,mailKeys.boxSk)
-			);
+		encoded = {
+			nonce : nacl.to_hex(nonce),
+			pk : nacl.to_hex(box.boxPk),
+			body : nacl.to_hex(nacl.crypto_box(mail,nonce,recipentPk,box.boxSk))
+		};
 	}
 	catch(err) {
 		console.log(err);
@@ -268,8 +291,8 @@ var pMailUser = function(username,password,isNew,callback) {
 			}
 			else {
 				callback(null, {
-					sk : user.pk,
-					pk : user.sk,
+					sk : user.sk,
+					pk : user.pk,
 					password : user.password,
 					username : username,
 					meta : {}
