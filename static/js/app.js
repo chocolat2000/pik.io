@@ -3,12 +3,12 @@ window.PMail 	= Ember.Application.create();
 PMail.searchindex	= null;
 PMail.domain 	= 'pik.io';
 
-PMail.username 	= null;
-PMail.sk 		= null;
-PMail.pk 		= null;
+//PMail.username 	= null;
+//PMail.sk 		= null;
+//PMail.pk 		= null;
 //PMail.sessionNonce = null;
-PMail.sessionKey = null;
-PMail.k 		= null;
+//PMail.sessionKey = null;
+//PMail.k 		= null;
 
 PMail.Router.map(function () {
   this.route('login');
@@ -252,7 +252,7 @@ PMail.InboxMailController = Ember.ObjectController.extend({
 		reply: function() {
 			var from = this.get('model.from');
 			var subject = this.get('model.subject');
-			var body = this.get('model.body');			
+			var body = this.get('model.text');			
 
 			PMail.composeMail = {
 				to: from[0].address,
@@ -265,7 +265,7 @@ PMail.InboxMailController = Ember.ObjectController.extend({
 			var to = [this.get('model.from')[0].address];
 			var from = this.get('model.from');
 			var subject = this.get('model.subject');
-			var body = this.get('model.body');	
+			var body = this.get('model.text');	
 			var _to = this.get('model.to');
 			for(var i in _to) {
 				if(_to.hasOwnProperty(i)) {
@@ -288,7 +288,7 @@ PMail.InboxMailController = Ember.ObjectController.extend({
 		forward: function() {
 			var from = this.get('model.from');
 			var subject = this.get('model.subject');
-			var body = this.get('model.body');			
+			var body = this.get('model.text');			
 
 			PMail.composeMail = {
 				to: '',
