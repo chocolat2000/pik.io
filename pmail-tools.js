@@ -5,6 +5,7 @@ var couchbase	= require('couchbase');
 var simplesmtp	= require('simplesmtp');
 var mailcomposer = require('mailcomposer').MailComposer;
 var domains 	= ['pik.io'];
+var masterdomain = 0;
 
 var usersdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
 var mailsdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
@@ -125,6 +126,10 @@ module.exports.updateUser = function(user, callback) {
 module.exports.sendMail = function(user,mail,callback) {
 
 	mail.date = new Date();
+	mail.from = [{
+		address: user.username+'@'+domains[masterdomain],
+		name: user.meta?user.meta.fullname:''
+	}];
 
 	var recipentPk = new Uint8Array(user.pk);
 	var message = nacl.encode_utf8(JSON.stringify(mail));
@@ -190,7 +195,6 @@ module.exports.sendMail = function(user,mail,callback) {
 
 	var extMail = new mailcomposer();
 	extMail.setMessageOption(mail);
-
 	mailPool.sendMail(extMail,function(err,message) {
 		if(err) {
 			console.log(err);
