@@ -55,23 +55,7 @@ PMail.LoginRoute = Em.Route.extend({
 		login: function(){
 			var controller = this.get('controller');
 			controller.set('errorMessage',null);
-			/*
-			var retVal = loginUser(controller.get('username'),controller.get('password'));
-			if(retVal && retVal.sk && retVal.sessionKey) {
-				PMail.username = controller.get('username');
-				PMail.sk = retVal.sk;
-				PMail.pk = retVal.pk;
-				PMail.sessionKey = retVal.sessionKey;
-				PMail.k = retVal.k;
-				controller.set('fullname', retVal.p ? retVal.p.fullname : '');
-				controller.set('isLoggedIn',true);
-				this.transitionTo('inbox');
-			}
-			else {
-				controller.set('errorMessage','Bad password');
-			}
-			*/
-			var password = (new jsSHA(controller.get('password'), 'TEXT')).getHash('SHA-512', 'HEX');
+			var password = CryptoJS.SHA512(controller.get('password')).toString(CryptoJS.enc.Hex);
 
 			Ember.$.ajax({
 				url: '/login/'+controller.get('username'),
@@ -131,9 +115,6 @@ PMail.LoginRoute = Em.Route.extend({
 			}).done(function(res) {
 				if(res.status === 'OK') {
 					controller.set('isLoggedIn',true);
-					if(res.meta) {
-						controller.set('fullname', res.meta.fullname || '');
-					}
 				}
 				else {
 					controller.set('errorMessage','Bad password');
@@ -435,10 +416,8 @@ PMail.ComposeController = Ember.ObjectController.extend({
 					to:to,
 					from:[{address:controller.get('username')}],
 					subject:controller.get('model.subject'),
-					body: {
-						text:body.innerText,
-						html:body.innerHTML
-					}
+					text:body.innerText,
+					html:body.innerHTML
 				}).save().then(function(mail) {
 					controller.transitionToRoute('sent');
 				});
@@ -507,7 +486,8 @@ PMail.ClearSearchView = Ember.View.extend({
 });
 
 PMail.Inbox = DS.Model.extend({
-	body: DS.attr(),
+	text: DS.attr(),
+	html: DS.attr(),
 	subject: DS.attr(),
 	from: DS.attr(),
 	to: DS.attr(),
@@ -516,7 +496,8 @@ PMail.Inbox = DS.Model.extend({
 });
 
 PMail.Sent = DS.Model.extend({
-	body: DS.attr(),
+	text: DS.attr(),
+	html: DS.attr(),
 	subject: DS.attr(),
 	from: DS.attr(),
 	to: DS.attr(),

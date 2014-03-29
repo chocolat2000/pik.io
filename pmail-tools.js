@@ -105,15 +105,14 @@ module.exports.deleteMail = function(mailid, callback) {
 	});
 };
 
-module.exports.updateUser = function(meta, callback) {
-	usersdb.get(this.username, function(err,result) {
+module.exports.updateUser = function(user, callback) {
+	usersdb.get(user.username, function(err,result) {
 		if(err) {
 			callback(err);
 			return;
 		}
-		this.meta = encodeUserMeta(meta,this.password);
-		result.value.meta = this.meta;
-		usersdb.set(req.session.username, result.value, function(err, result) {
+		result.value.meta = encodeUserMeta(user.meta,user.password);
+		usersdb.set(user.username, result.value, function(err, result) {
 			if(err) {
 				callback(err);
 				return;
@@ -238,27 +237,36 @@ var encodeMail = function(mail,recipentPk) {
 };
 
 var decodeUserMeta = function(meta,password) {
-	var nonce = nacl.from_hex(meta.nonce);
-	return JSON.parse(nacl.decode_utf8(
-		nacl.crypto_secretbox_open(
-			nacl.from_hex(meta.value),
-			nonce,
-			password)
-		)
-	);
+	var result = null;
+	try {
+		var nonce = nacl.from_hex(meta.nonce);
+		var value = nacl.from_hex(meta.value);
+		result = JSON.parse(nacl.decode_utf8(nacl.crypto_secretbox_open(value,nonce,password)));
+	}
+	catch (err) {
+		console.log(err);
+	}
+	return result;
 };
 
 var encodeUserMeta = function(meta,password) {
 	var nonce = nacl.crypto_secretbox_random_nonce();
-	return {
-		nonce : nacl.to_hex(nonce),
-		value : nacl.to_hex(
-			nacl.crypto_secretbox(
-				nacl.encode_utf8(JSON.stringify(meta)),
-				nonce,
-				password)
-			)
+	var result = null;
+	try {
+		result = {
+			nonce : nacl.to_hex(nonce),
+			value : nacl.to_hex(
+				nacl.crypto_secretbox(
+					nacl.encode_utf8(JSON.stringify(meta)),
+					nonce,
+					password)
+				)
+		}
 	}
+	catch (err) {
+		console.log(err);
+	}
+	return result;
 };
 
 var pMailUser = function(username,password,isNew,callback) {
@@ -295,7 +303,7 @@ var pMailUser = function(username,password,isNew,callback) {
 					pk : user.pk,
 					password : user.password,
 					username : username,
-					meta : {}
+					meta : user.meta || {}
 				});
 			}
 		});
@@ -342,12 +350,13 @@ var loadUser = function(username, password, callback) {
 				user = {
 					pk : nacl.from_hex(result.value.pk),
 					sk : nacl.crypto_secretbox_open(nacl.from_hex(result.value.sk),nonce,nacl.from_hex(passHash.hash)),
-					password : password
+					password : password,
+					meta : result.value.hasOwnProperty('meta')?decodeUserMeta(result.value.meta,password):{}
 				};
 				callback(null,user);
 			}
 			catch (err) {
-				console.log(99,err);
+				console.log(err);
 				callback('Bad password',{});
 			}
 		}

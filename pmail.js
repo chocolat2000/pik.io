@@ -54,7 +54,10 @@ app
 			}
 			else {
 				req.session.user = user;
-				res.send({status: 'OK'});	
+				res.send({
+					status: 'OK',
+					meta:user.meta
+				});	
 			}		
 		});
 
@@ -294,7 +297,8 @@ app
 	})
 	.put('/update', function(req, res) {
 		if(req.session.user && req.body.meta) {
-			tools.updateUser(req.session.user,req.body.meta, function(err) {
+			req.session.user.meta = req.body.meta;
+			tools.updateUser(req.session.user, function(err) {
 				if(err) {
 					res.send({status: 'NOK'});
 				}
