@@ -386,6 +386,7 @@ PMail.ComposeRoute = Em.Route.extend({
 				subject: PMail.composeMail.subject || '',
 				body: PMail.composeMail.body || ''
 			});
+			delete PMail.composeMail;
 		}
 		return model;
 	}
@@ -400,13 +401,14 @@ PMail.ComposeView = Ember.View.extend({
 PMail.ComposeController = Ember.ObjectController.extend({
 	needs: 'application',
 	usernameBinding: 'controllers.application.username',
+	fullnameBinding: 'controllers.application.fullname',
 	toInError: false,
 	actions: {
 		send: function(evt) {
 			var controller = this;
 			controller.set('toInError', false);
 			var to = controller.get('model.to');
-			if(to && to.length > 0) {
+			if(to && to.length > 0 && /^[\040-\176]*$/.test(to)) {
 				to = to.split(',');
 				for(var i = 0; i<to.length; i++) {
 					to[i] = {address:to[i].trim()};
@@ -414,7 +416,7 @@ PMail.ComposeController = Ember.ObjectController.extend({
 				var body = Ember.$('#inputBody').cleditor()[0].doc.body;
 				controller.store.createRecord('sent', {
 					to:to,
-					from:[{address:controller.get('username')}],
+					from:[{name:controller.get('fullname'),address:controller.get('username')}],
 					subject:controller.get('model.subject'),
 					text:body.innerText,
 					html:body.innerHTML

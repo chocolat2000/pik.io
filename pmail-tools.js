@@ -193,15 +193,38 @@ module.exports.sendMail = function(user,mail,callback) {
 		}
 	});
 
-	var extMail = new mailcomposer();
-	extMail.setMessageOption(mail);
-	mailPool.sendMail(extMail,function(err,message) {
-		if(err) {
-			console.log(err);
-			console.log(message);
+	mail.envelope = {to:new Array()};
+	for(var i = 0; i<mail.to.length; i++) {
+		if(mail.to[i].hasOwnProperty('name') && mail.to[i].name.length>0) {
+			mail.envelope.to.push(mail.to[i].name+' <'+mail.to[i].address+'>');
 		}
-	});
+		else {
+			mail.envelope.to.push(mail.to[i].address);
+		}
+	}
+	mail.envelope.to = mail.envelope.to.join(', ');
+	if(mail.from[0].hasOwnProperty('name') && mail.from[0].name.length>0) {
+		mail.envelope.from = mail.from[0].name+' <'+mail.from[0].address+'>';
+	}
+	else {
+		mail.envelope.from = mail.from[0].address;
+	}
+	mail.from = mail.from[0].address;
+	var extMail = new mailcomposer();
+
+	for(var i = 0; i<extTo.length; i++) {
+		mail.to = extTo[i];
+		console.log(mail);
+		extMail.setMessageOption(mail);
+		mailPool.sendMail(extMail,function(err,message) {
+			if(err) {
+				console.log(err);
+				console.log(message);
+			}
+		});
+	}
 };
+
 
 
 var decodeMail = function(mail,recipentSk) {
