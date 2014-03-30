@@ -44,7 +44,7 @@ var endParser = function(mail) {
 	var usernames = [];
 	for(var key in mail.to) {
 		var _to = (mail.to[key].address || '').split('@');
-		if(_to.length === 2 && (domains.indexOf(to[1])>-1)) {
+		if(_to.length === 2 && (domains.indexOf(_to[1])>-1)) {
 			usernames.push(_to[0]);
 		}
 	}
