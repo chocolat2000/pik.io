@@ -131,27 +131,31 @@ module.exports.sendMail = function(user,mail,callback) {
 		name: user.meta?user.meta.fullname:''
 	}];
 
-	var recipentPk = new Uint8Array(user.pk);
+	var senderPk = new Uint8Array(user.pk);
+	var senderSignSk = new Uint8Array(user.signsk);
 	var message = nacl.encode_utf8(JSON.stringify(mail));
 
 	var mailId = (+new Date).toString(36)+'-pmailInt';
-	var encoded = encodeMail(message,recipentPk);
-	mailsdb.set(mailId,{
-		username:user.username,
-		body:encoded.body,
-		nonce:encoded.nonce,
-		pk:encoded.pk,
-		folder:'sent'
-	},function(err, results) {
-			if(err) {
-				callback(err,{});
-				return;
-			}
+	var encoded = encodeMail(message,senderPk);
+	if(encoded) {
+		encoded.folder = 'sent';
+		encoded.username = user.username;
+		encoded.sign = signMail(message,senderSignSk);
+		mailsdb.set(mailId,encoded,function(err, results) {
+				if(err) {
+					callback(err,{});
+					return;
+				}
 
-			mail.id = mailId;
-			callback(null,mail);
-		}
-	);
+				mail.id = mailId;
+				callback(null,mail);
+			}
+		);
+	}
+	else {
+		callback('',{});
+		return;
+	}
 
 	var pMailTo = new Array();
 	var extTo = new Array();
@@ -174,17 +178,14 @@ module.exports.sendMail = function(user,mail,callback) {
 	}
 
 	usersdb.getMulti(pMailTo, {}, function(err, results) {
-		for(var user in results) {
-			if(results[user].hasOwnProperty('value') && results[user].value.hasOwnProperty('pk')) {
+		for(var recipient in results) {
+			if(results[recipient].hasOwnProperty('value') && results[recipient].value.hasOwnProperty('pk')) {
 				var mailId = (+new Date).toString(36)+'-pmailInt';
-				var encoded = encodeMail(message,nacl.from_hex(results[user].value.pk));
-				mailsdb.set(mailId, {
-						username:user,
-						body:encoded.body,
-						nonce:encoded.nonce,
-						pk:encoded.pk,
-						folder:'inbox'
-					}, function(err, results) {
+				var encoded = encodeMail(message,nacl.from_hex(results[recipient].value.pk));
+				encoded.folder = 'inbox';
+				encoded.username = recipient;
+				encoded.sign = signMail(message,senderSignSk);
+				mailsdb.set(mailId,encoded, function(err, results) {
 					if(err) {
 						console.log(err);
 					}
@@ -195,7 +196,7 @@ module.exports.sendMail = function(user,mail,callback) {
 
 	mail.envelope = {to:new Array()};
 	for(var i = 0; i<mail.to.length; i++) {
-		if(mail.to[i].hasOwnProperty('name') && mail.to[i].name.length>0) {
+		if(mail.to[i].name && mail.to[i].name.length>0) {
 			mail.envelope.to.push(mail.to[i].name+' <'+mail.to[i].address+'>');
 		}
 		else {
@@ -203,7 +204,7 @@ module.exports.sendMail = function(user,mail,callback) {
 		}
 	}
 	mail.envelope.to = mail.envelope.to.join(', ');
-	if(mail.from[0].hasOwnProperty('name') && mail.from[0].name.length>0) {
+	if(mail.from[0].name && mail.from[0].name.length>0) {
 		mail.envelope.from = mail.from[0].name+' <'+mail.from[0].address+'>';
 	}
 	else {
@@ -254,14 +255,30 @@ var encodeMail = function(mail,recipentPk) {
 			pk : nacl.to_hex(box.boxPk),
 			body : nacl.to_hex(nacl.crypto_box(mail,nonce,recipentPk,box.boxSk))
 		};
+
 	}
 	catch(err) {
 		console.log(err);
 		encoded = null;
 	}
-
 	return encoded;
 };
+
+var signMail = function(mail,senderSignSk) {
+	var sign = null;
+	try {
+		sign = nacl.to_hex(nacl.crypto_sign_detached(mail,senderSignSk));
+	}
+	catch(err) {
+		console.log(err);
+		sign = null;
+	}
+	return sign;
+}
+
+var checkSign = function(mail,senderSignPk) {
+	return false;
+}
 
 var decodeUserMeta = function(meta,password) {
 	var result = null;
@@ -304,17 +321,20 @@ var pMailUser = function(username,password,isNew,callback) {
 			callback('error',{});
 		}
 		else {
-			var result = {
+			var _user = {
 				sk : user.box.boxSk,
 				pk : user.box.boxPk,
+				signsk : user.sign.signSk,
+				signpk : user.sign.signPk,
 				password : user.password,
 				username : username,
 				meta : {}
 			};
 			delete user.box;
+			delete user.sign;
 			delete user.password;
 			usersdb.set(username, user, function(err, result) {
-				callback(null,result);
+				callback(null,_user);
 			});
 
 		}
@@ -328,6 +348,8 @@ var pMailUser = function(username,password,isNew,callback) {
 				callback(null, {
 					sk : user.sk,
 					pk : user.pk,
+					signsk : user.signsk,
+					signpk : user.signpk,
 					password : user.password,
 					username : username,
 					meta : user.meta || {}
@@ -342,15 +364,21 @@ var newUser = function(password) {
 	try {
 		var pass = scrypt.kdf(password,{'N':65536, 'r':8, 'p': 1});
 		var keypair = nacl.crypto_box_keypair();
-		var nonce = nacl.crypto_secretbox_random_nonce();
+		var signpair = nacl.crypto_sign_keypair();
+		var boxnonce = nacl.crypto_secretbox_random_nonce();
+		var signnonce = nacl.crypto_secretbox_random_nonce();
 		var p = nacl.from_hex(pass.hash);
 
 		res = {
-			nonce : nacl.to_hex(nonce),
+			boxnonce : nacl.to_hex(boxnonce),
+			signnonce : nacl.to_hex(signnonce),
 			pk : nacl.to_hex(keypair.boxPk),
-			sk : nacl.to_hex(nacl.crypto_secretbox(keypair.boxSk,nonce,p)),
+			sk : nacl.to_hex(nacl.crypto_secretbox(keypair.boxSk,boxnonce,p)),
+			signpk : nacl.to_hex(signpair.signPk),
+			signsk : nacl.to_hex(nacl.crypto_secretbox(signpair.signSk,signnonce,p)),
 			salt : pass.salt,
 			box : keypair,
+			sign : signpair,
 			password : p
 		};
 	}
@@ -372,11 +400,14 @@ var loadUser = function(username, password, callback) {
 
 			try {
 				var passHash = scrypt.kdf(_password,{'N':65536, 'r':8, 'p': 1},scrypt.kdf.config.outputLength,result.value.salt);
-				var nonce = nacl.from_hex(result.value.nonce);
+				var boxnonce = nacl.from_hex(result.value.boxnonce);
+				var signnonce = nacl.from_hex(result.value.signnonce);
 				var password = nacl.from_hex(passHash.hash);
 				user = {
 					pk : nacl.from_hex(result.value.pk),
-					sk : nacl.crypto_secretbox_open(nacl.from_hex(result.value.sk),nonce,nacl.from_hex(passHash.hash)),
+					sk : nacl.crypto_secretbox_open(nacl.from_hex(result.value.sk),boxnonce,password),
+					signpk : nacl.from_hex(result.value.signpk),
+					signsk : nacl.crypto_secretbox_open(nacl.from_hex(result.value.signsk),signnonce,password),
 					password : password,
 					meta : result.value.hasOwnProperty('meta')?decodeUserMeta(result.value.meta,password):{}
 				};

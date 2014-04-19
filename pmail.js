@@ -11,15 +11,15 @@ app.configure(function(){
 	app
 		.use(express.favicon())
 		.use(express.compress())
-		.use(express.cookieParser(tools.randomSession(32)))
+		.use(express.cookieParser())
 		//.use(express.session({
 		//	secret: tools.randomSession(32),
 		//	store: new MemcachedStore({
 		//		hosts: [ '127.0.0.1:11211' ]
 		//	})
 		//}))
-		//.use(express.session({secret: tools.randomSession(32)}))
-		.use(express.cookieSession())
+		.use(express.session({secret: tools.randomSession(32)}))
+		//.use(express.cookieSession())
 		.use(express.json())
 		.use(app.router);
 });
@@ -91,6 +91,7 @@ app
 				limit: req.query.hasOwnProperty('limit') ? req.query.limit : 20,
 				firstElem: req.query.hasOwnProperty('firstElem') ? req.query.firstElem : 0
 			};
+			
 			tools.getMails(req.session.user,params,function(err,mails) {
 				if(err) {
 					res.send({
@@ -109,6 +110,14 @@ app
 							hasPrevious : params.firstElem > 0
 						}
 					});
+				}
+			});
+		}
+		else {
+			res.send({
+				inboxes: [],
+				meta : {
+					status: 'NOK'
 				}
 			});
 		}
@@ -142,7 +151,14 @@ app
 				}
 			});
 		}
-
+		else {
+			res.send({
+				sents: [],
+				meta : {
+					status: 'NOK'
+				}
+			});
+		}
 	})
 	.get('/trashes', function(req, res){
 		if(req.session.user) {
@@ -169,6 +185,14 @@ app
 							hasPrevious : params.firstElem > 0
 						}
 					});
+				}
+			});
+		}
+		else {
+			res.send({
+				trashes: [],
+				meta : {
+					status: 'NOK'
 				}
 			});
 		}

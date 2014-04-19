@@ -37,12 +37,11 @@ PMail.LoginController = Ember.ObjectController.extend({
 	needs: 'application',
 	usernameBinding: 'controllers.application.username',
 	fullnameBinding: 'controllers.application.fullname',
+	isLoggedInBinding: 'controllers.application.isLoggedIn',
 	password: null,
 	repeat: null,
 	isJoining: false,
 	errorMessage: null,
-	//fullname: Ember.computed.alias('controllers.application.fullname'),
-	isLoggedInBinding: 'controllers.application.isLoggedIn',
 	actions: {
 		changeJoin : function() {
 			this.set('isJoining',!this.get('isJoining'));
@@ -67,7 +66,7 @@ PMail.LoginRoute = Em.Route.extend({
 			}).done(function(res) {
 				if(res.status === 'OK') {
 					controller.set('isLoggedIn',true);
-					if(res.meta) {
+					if(res.hasOwnProperty('meta')) {
 						controller.set('fullname', res.meta.fullname || '');
 					}
 				}
@@ -103,7 +102,7 @@ PMail.LoginRoute = Em.Route.extend({
 				controller.set('errorMessage','Cannot create that account');
 			}
 			*/
-			var password = (new jsSHA(controller.get('password'), 'TEXT')).getHash('SHA-512', 'HEX');
+			var password = CryptoJS.SHA512(controller.get('password')).toString(CryptoJS.enc.Hex);
 			Ember.$.ajax({
 				url: '/login/'+controller.get('username'),
 				type: 'POST',
