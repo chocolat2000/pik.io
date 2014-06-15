@@ -76,7 +76,7 @@ var endParser = function(mail) {
 	}
 	if(usernames.length === 0)
 		return;
-    User.find({username : {$in : usernames}}, 'pk', function(err, results) {
+    User.find({username : {$in : usernames}}, 'pk username', function(err, results) {
 		for(var recipient in results) {
 			if(results[recipient].pk) {
 				var userPk = nacl.from_hex(results[recipient].pk);
@@ -86,7 +86,7 @@ var endParser = function(mail) {
 				var m_encrypted = nacl.crypto_box(message,nonce,userPk,sessionKeys.boxSk);
                 (new Mail(
                     {
-						username: username,
+						username: results[recipient].username,
 						pk: nacl.to_hex(sessionKeys.boxPk),
 						nonce: nacl.to_hex(nonce),
 						body: nacl.to_hex(m_encrypted),
