@@ -1,15 +1,39 @@
 'use strict';
-var nacl 		= require('js-nacl').instantiate();
-var scrypt 		= require('scrypt');
-var couchbase	= require('couchbase');
-var simplesmtp	= require('simplesmtp');
+var nacl 		 = require('js-nacl').instantiate();
+var scrypt 		 = require('scrypt');
+var mongoose     = require('mongoose');
+var simplesmtp	 = require('simplesmtp');
 var mailcomposer = require('mailcomposer').MailComposer;
-var domains 	= ['pik.io'];
+var domains 	 = ['pik.io'];
 var masterdomain = 0;
 
-var usersdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
-var mailsdb = new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
-var inboxes = mailsdb.view('inboxes','by_username');
+var usersSchema = new mongoose.Schema ({
+    username : String,
+    boxnonce : String,
+    signnonce : String,
+    pk : String,
+    sk : String,
+    signpk : String,
+    signsk : String,
+    salt : String,
+    meta : {
+        nonce : String,
+        value : String
+    }
+});
+var mailsSchema = new mongoose.Schema ({
+    username : String,
+    folder : String,
+    sign : String,
+    nonce : String,
+    pk : String,
+    body : String
+});
+
+var User = mongoose.model('users', usersSchema);
+var Mail = mongoose.model('mails', mailsSchema);
+
+mongoose.connect('mongodb://localhost/pmail');
 
 scrypt.kdf.config.saltEncoding 		= 'hex';
 scrypt.kdf.config.keyEncoding		= 'hex';
@@ -17,7 +41,7 @@ scrypt.kdf.config.outputEncoding 	= 'hex';
 scrypt.kdf.config.defaultSaltSize 	= 32;
 scrypt.kdf.config.outputLength 		= 32;
 
-var mailPool = simplesmtp.createClientPool(587, 'localhost', {
+var mailPool = simplesmtp.createClientPool(2555, '127.0.0.1', {
 	auth : {
 		user: 'pikio',
 		pass: 'pikio'
@@ -48,106 +72,72 @@ module.exports.getMails = function(user,params,callback) {
 	var username = user.username;
 	var userSk = new Uint8Array(user.sk);
 
-	inboxes.query(
-		{limit:limit,key:[username,folder],descending:true,skip:firstElem},
+    Mail.find({username:username,folder:folder}).limit(limit).exec(
 		function(err, results) {
 			if(err) {
 				callback(err,{});
 				return;
 			}
-			var keys = new Array();
-			for(var id in results) {
-				keys.push(results[id].id);
-			}
-			if(keys.length > 0) {
-				mailsdb.getMulti(keys, {}, function(err, results) {
-					if(err) {
-						callback(err,{});
-					}
-					else {
-						var result = new Array();
-						for(var id in results) {
-							if(results[id].value) {
-								var mail = decodeMail(results[id].value,userSk);
-								if(mail) {
-									mail = JSON.parse(nacl.decode_utf8(mail));
-									mail.id = id;
-									result.push(mail);
-								}
-							}
-						}
-						callback(null,result);
-					}
-				});
-			}
-			else {
-				callback(null,[]);
+            else {
+                var result = new Array();
+                for(var id in results) {
+                    if(results[id]) {
+                        var mail = decodeMail(results[id],userSk);
+                        if(mail) {
+                            mail = JSON.parse(nacl.decode_utf8(mail));
+                            mail.id = results[id]._id;
+                            result.push(mail);
+                        }
+                    }
+                }
+                callback(null,result);
 			}
 		}
 	);
 };
 
 module.exports.deleteMail = function(mailid, callback) {
-	mailsdb.get(mailid, {},function(err, result) {
-		if(err) {
+    Mail.update({_id:mailid}, {folder:'trash'}, {multi:false}, function(err,numberAffected,raw) {
+		if(err || numberAffected !== 1) {
 			console.log(err);
 			callback(err);
 			return;
 		}
-		result.value.folder = 'trash';
-		mailsdb.set(mailid,result.value,function(err, result) {
-			if(err) {
-				console.log(err);
-				callback(err);
-				return;
-			}
-			callback(null);
-		});
 	});
 };
 
 module.exports.updateUser = function(user, callback) {
-	usersdb.get(user.username, function(err,result) {
-		if(err) {
+    User.update({username:user.username}, {meta:encodeUserMeta(user.meta,user.password)}, {multi:false}, function(err,numberAffected,raw) {
+		if(err || numberAffected !== 1) {
 			callback(err);
 			return;
 		}
-		result.value.meta = encodeUserMeta(user.meta,user.password);
-		usersdb.set(user.username, result.value, function(err, result) {
-			if(err) {
-				callback(err);
-				return;
-			}
-			callback(null);
-		});
 	});
 };
 
 module.exports.sendMail = function(user,mail,callback) {
-
 	mail.date = new Date();
 	mail.from = [{
 		address: user.username+'@'+domains[masterdomain],
-		name: user.meta?user.meta.fullname:''
+		name: (user.meta && user.meta.fullname && user.meta.fullname.length > 1)?user.meta.fullname:''
 	}];
 
 	var senderPk = new Uint8Array(user.pk);
 	var senderSignSk = new Uint8Array(user.signsk);
 	var message = nacl.encode_utf8(JSON.stringify(mail));
-
-	var mailId = (+new Date).toString(36)+'-pmailInt';
 	var encoded = encodeMail(message,senderPk);
+    
 	if(encoded) {
 		encoded.folder = 'sent';
 		encoded.username = user.username;
 		encoded.sign = signMail(message,senderSignSk);
-		mailsdb.set(mailId,encoded,function(err, results) {
+        (new Mail(encoded)).save(function(err) {
 				if(err) {
 					callback(err,{});
 					return;
 				}
 
-				mail.id = mailId;
+				mail.id = encoded._id;
 				callback(null,mail);
 			}
 		);
@@ -177,22 +167,27 @@ module.exports.sendMail = function(user,mail,callback) {
 		}
 	}
 
-	usersdb.getMulti(pMailTo, {}, function(err, results) {
-		for(var recipient in results) {
-			if(results[recipient].hasOwnProperty('value') && results[recipient].value.hasOwnProperty('pk')) {
-				var mailId = (+new Date).toString(36)+'-pmailInt';
-				var encoded = encodeMail(message,nacl.from_hex(results[recipient].value.pk));
-				encoded.folder = 'inbox';
-				encoded.username = recipient;
-				encoded.sign = signMail(message,senderSignSk);
-				mailsdb.set(mailId,encoded, function(err, results) {
-					if(err) {
-						console.log(err);
-					}
-				});
-			}
-		}
-	});
+    if(pMailTo.length > 0) {
+        User.find({username : {$in : pMailTo}},
+              function(err, results) {
+                    for(var recipient in results) {
+                        if(results[recipient].pk) {
+                            var encoded = encodeMail(message,nacl.from_hex(results[recipient].pk));
+                            encoded.folder = 'inbox';
+                            encoded.username = results[recipient].username;
+                            if(results[recipient].signpk) {
+                                encoded.sign = signMail(message,results[recipient].signpk);
+                            }
+                            (new Mail(encoded)).save(function(err) {
+                                if(err) {
+                                    console.log(err);
+                                }
+                            });
+                        }
+                    }
+              }
+        );
+    }
 
 	mail.envelope = {to:new Array()};
 	for(var i = 0; i<mail.to.length; i++) {
@@ -215,7 +210,6 @@ module.exports.sendMail = function(user,mail,callback) {
 
 	for(var i = 0; i<extTo.length; i++) {
 		mail.to = extTo[i];
-		console.log(mail);
 		extMail.setMessageOption(mail);
 		mailPool.sendMail(extMail,function(err,message) {
 			if(err) {
@@ -333,7 +327,10 @@ var pMailUser = function(username,password,isNew,callback) {
 			delete user.box;
 			delete user.sign;
 			delete user.password;
-			usersdb.set(username, user, function(err, result) {
+            user.username = username;
+            var dbUser = new User(user);
+			dbUser.save(function(err) {
+                console.log(err);
 				callback(null,_user);
 			});
 
@@ -392,24 +389,23 @@ var newUser = function(password) {
 var loadUser = function(username, password, callback) {
 	var user = null;
 	var _password = password;
-	usersdb.get(username, function(err,result) {
+    User.findOne({username:username}, function(err,result) {
 		if(err) {
 			callback(err,{});
 		}
 		else {
-
 			try {
-				var passHash = scrypt.kdf(_password,{'N':65536, 'r':8, 'p': 1},scrypt.kdf.config.outputLength,result.value.salt);
-				var boxnonce = nacl.from_hex(result.value.boxnonce);
-				var signnonce = nacl.from_hex(result.value.signnonce);
+				var passHash = scrypt.kdf(_password,{'N':65536, 'r':8, 'p': 1},scrypt.kdf.config.outputLength,result.salt);
+				var boxnonce = nacl.from_hex(result.boxnonce);
+				var signnonce = nacl.from_hex(result.signnonce);
 				var password = nacl.from_hex(passHash.hash);
 				user = {
-					pk : nacl.from_hex(result.value.pk),
-					sk : nacl.crypto_secretbox_open(nacl.from_hex(result.value.sk),boxnonce,password),
-					signpk : nacl.from_hex(result.value.signpk),
-					signsk : nacl.crypto_secretbox_open(nacl.from_hex(result.value.signsk),signnonce,password),
+					pk : nacl.from_hex(result.pk),
+					sk : nacl.crypto_secretbox_open(nacl.from_hex(result.sk),boxnonce,password),
+					signpk : nacl.from_hex(result.signpk),
+					signsk : nacl.crypto_secretbox_open(nacl.from_hex(result.signsk),signnonce,password),
 					password : password,
-					meta : result.value.hasOwnProperty('meta')?decodeUserMeta(result.value.meta,password):{}
+					meta : result.meta?decodeUserMeta(result.meta,password):{}
 				};
 				callback(null,user);
 			}

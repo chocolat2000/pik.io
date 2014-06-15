@@ -1,20 +1,46 @@
 'use strict';
-var couchbase	= require('couchbase');
-var nacl 		= require('js-nacl').instantiate();
-var simplesmtp	= require('simplesmtp');
-var mailparser 	= require('mailparser').MailParser;
+var mongoose     = require('mongoose');
+var nacl 		 = require('js-nacl').instantiate();
+var simplesmtp   = require('simplesmtp');
+var mailparser 	 = require('mailparser').MailParser;
 //var tools 		= require('./pmail-tools');
 
 var domains = ['pik.io'];
 var smtp = simplesmtp.createServer({
+    localAddress: '127.0.0.1',
 	name: 'front1.pik.io',
 	SMTPBanner: 'hello boy !',
 	ignoreTLS: true,
 	disableDNSValidation: true
 });
 
-var usersdb =  new couchbase.Connection({host: 'localhost:8091', bucket: 'users'});
-var mailsdb =  new couchbase.Connection({host: 'localhost:8091', bucket: 'mails'});
+var usersSchema = new mongoose.Schema ({
+    username : String,
+    boxnonce : String,
+    signnonce : String,
+    pk : String,
+    sk : String,
+    signpk : String,
+    signsk : String,
+    salt : String,
+    meta : {
+        nonce : String,
+        value : String
+    }
+});
+var mailsSchema = new mongoose.Schema ({
+    username : String,
+    folder : String,
+    sign : String,
+    nonce : String,
+    pk : String,
+    body : String
+});
+
+var User = mongoose.model('users', usersSchema);
+var Mail = mongoose.model('mails', mailsSchema);
+
+mongoose.connect('mongodb://localhost/pmail');
 
 smtp.listen(2525, function(err) {
 	if(err)
@@ -50,31 +76,29 @@ var endParser = function(mail) {
 	}
 	if(usernames.length === 0)
 		return;
-	usersdb.getMulti(usernames, null, function(err,results) {
-		var mails = new Object();
-		for(var username in results) {
-			if(results.hasOwnProperty(username) && results[username].value && results[username].value.pk) {
-				var userPk = nacl.from_hex(results[username].value.pk);
+    User.find({username : {$in : usernames}}, 'pk', function(err, results) {
+		for(var recipient in results) {
+			if(results[recipient].pk) {
+				var userPk = nacl.from_hex(results[recipient].pk);
 				var sessionKeys = nacl.crypto_box_keypair();
 				var message = nacl.encode_utf8(JSON.stringify(mail));
 				var nonce = nacl.crypto_box_random_nonce();
 				var m_encrypted = nacl.crypto_box(message,nonce,userPk,sessionKeys.boxSk);
-				mails[(+new Date).toString(36)+'-pmailExt'] = {
-					value:{
+                (new Mail(
+                    {
 						username: username,
 						pk: nacl.to_hex(sessionKeys.boxPk),
 						nonce: nacl.to_hex(nonce),
 						body: nacl.to_hex(m_encrypted),
 						folder: 'inbox'
-					}
-				}
+					}))
+                .save(function(err) {
+                    if(err) {
+                        console.log(err);
+                    }
+                });
+
 			}
 		}
-		mailsdb.setMulti(mails, {},
-			function(err, result) {
-				if(err) {
-					console.log(err);
-				}
-		});
 	});
 }

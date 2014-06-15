@@ -82,26 +82,6 @@ PMail.LoginRoute = Em.Route.extend({
 		join: function(){
 			var controller = this.get('controller');
 			controller.set('errorMessage',null);
-			/*
-			if(controller.get('password') !== controller.get('repeat')) {
-				controller.set('errorMessage','Passwords do not match !');
-				return;
-			}
-			var retVal = joinUser(controller.get('username'),controller.get('password'));
-			if(retVal && retVal.sk && retVal.sessionKey) {
-				PMail.username = controller.get('username');
-				PMail.sk = retVal.sk;
-				//PMail.sessionNonce = retVal.sessionNonce;
-				PMail.sessionKey = retVal.sessionKey;
-				PMail.k = retVal.k;
-				PMail.signSk = retVal.signSk;
-				controller.set('isLoggedIn',true);
-				this.transitionTo('inbox');
-			}
-			else {
-				controller.set('errorMessage','Cannot create that account');
-			}
-			*/
 			var password = CryptoJS.SHA512(controller.get('password')).toString(CryptoJS.enc.Hex);
 			Ember.$.ajax({
 				url: '/login/'+controller.get('username'),
@@ -141,17 +121,6 @@ PMail.InboxRoute = Ember.Route.extend({
 		});
 	},
 	model: function() {
-		/*
-		var controller = this.controllerFor('inbox');
-		return sendRequest('inboxes', {limit:10,firstElem:controller.get('firstElem')})
-		.then(function(mails) {
-			decodeMail(mails.inboxes);
-			if(mails.hasOwnProperty('hasNext')) {
-				controller.set('hasNext', mails.hasNext?true:false);
-			}
-			return mails.inboxes;
-		});
-		*/
 		var controller = this.controllerFor('inbox');
 		return this.store.find('inbox',{limit:controller.get('limit'),firstElem:controller.get('firstElem')});
 	},
@@ -393,7 +362,8 @@ PMail.ComposeRoute = Em.Route.extend({
 
 PMail.ComposeView = Ember.View.extend({
 	didInsertElement: function() {
-		Ember.$('#inputBody').val(this.get('controller.model.body')).cleditor().focus();
+		Ember.$('#inputBody').val(this.get('controller.model.body')).cleditor();
+        Ember.$('#inputTo').focus();
 	}
 });
 
@@ -417,7 +387,7 @@ PMail.ComposeController = Ember.ObjectController.extend({
 					to:to,
 					from:[{name:controller.get('fullname'),address:controller.get('username')}],
 					subject:controller.get('model.subject'),
-					text:body.innerText,
+					text:body.textContent,
 					html:body.innerHTML
 				}).save().then(function(mail) {
 					controller.transitionToRoute('sent');
