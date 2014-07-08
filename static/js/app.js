@@ -3,15 +3,11 @@ window.PMail 	= Ember.Application.create();
 PMail.searchindex	= null;
 PMail.domain 	= 'pik.io';
 
-//PMail.username 	= null;
-//PMail.sk 		= null;
-//PMail.pk 		= null;
-//PMail.sessionNonce = null;
-//PMail.sessionKey = null;
-//PMail.k 		= null;
+var CKEDITOR_BASEPATH = '/js/editor/';
 
 PMail.Router.map(function () {
   this.route('login');
+  this.route('logout');
   this.route('compose');
   this.route('profile');
   this.resource('inbox', function () {
@@ -49,7 +45,7 @@ PMail.LoginController = Ember.ObjectController.extend({
 	}
 });
 
-PMail.LoginRoute = Em.Route.extend({
+PMail.LoginRoute = Ember.Route.extend({
 	actions: {
 		login: function(){
 			var controller = this.get('controller');
@@ -105,6 +101,24 @@ PMail.LoginRoute = Em.Route.extend({
 			}
 
 		}
+	}
+});
+
+PMail.LogoutRoute = Ember.Route.extend({
+	beforeModel: function() {
+        var controller = this.controllerFor('application');
+        return Ember.$.ajax({
+            url: '/logout',
+            type: 'GET',
+            async: false,
+            contentType: 'application/json',
+        }).done(function(res) {
+           if(res.status === 'OK') {
+                controller.set('username',null);
+                controller.set('fullname','');
+                controller.set('isLoggedIn',false);
+           }
+        });
 	}
 });
 
@@ -225,7 +239,7 @@ PMail.InboxMailController = Ember.ObjectController.extend({
 			PMail.composeMail = {
 				to: from[0].address,
 				subject: /^re:(.*)/i.exec(subject) ? subject : "Re: "+subject,
-				body: "<br><hr>"+from[0].address+" wrote:<div>"+body+"</div>"
+				body: '<p></p><hr>'+from[0].address+' wrote:<br><div>'+body+'</div>'
 			};
 			this.transitionToRoute('compose');
 		},
@@ -248,7 +262,7 @@ PMail.InboxMailController = Ember.ObjectController.extend({
 			PMail.composeMail = {
 				to: to,
 				subject: /^re:(.*)/i.exec(subject) ? subject : "Re: "+subject,
-				body: "<br><hr>"+from[0].address+" wrote:<div>"+body+"</div>"
+				body: '<p></p><hr>'+from[0].address+' wrote:<br><div>'+body+'</div>'
 			};
 			this.transitionToRoute('compose');
 
@@ -261,7 +275,7 @@ PMail.InboxMailController = Ember.ObjectController.extend({
 			PMail.composeMail = {
 				to: '',
 				subject: /^fw:(.*)/i.exec(subject) ? subject : "Fw: "+subject,
-				body: "<br><hr>"+from[0].address+" wrote:<div>"+body+"</div>"
+				body: '<p></p><hr>'+from[0].address+' wrote:<br><div>'+body+'</div>'
 			};
 			this.transitionToRoute('compose');
 		}
@@ -341,6 +355,9 @@ Ember.Handlebars.helper('truncate', function(value, options) {
 PMail.ComposeRoute = Em.Route.extend({
 	beforeModel: function() {
 		if(!this.controllerFor('application').get('isLoggedIn')) this.transitionTo('login');
+        if(!this.get('controller.composeReady')) {
+        	return Ember.$.getScript('/js/editor/ckeditor.js');
+        }
 	},
 	model: function() {
 		var model = Ember.Object.create({
@@ -362,13 +379,15 @@ PMail.ComposeRoute = Em.Route.extend({
 
 PMail.ComposeView = Ember.View.extend({
 	didInsertElement: function() {
-		Ember.$('#inputBody').val(this.get('controller.model.body')).cleditor();
+        CKEDITOR.replace('inputBody').setData(this.get('controller.model.body'));
         Ember.$('#inputTo').focus();
+        this.set('controller.composeReady',true);
 	}
 });
 
 PMail.ComposeController = Ember.ObjectController.extend({
 	needs: 'application',
+    composeReady: false,
 	usernameBinding: 'controllers.application.username',
 	fullnameBinding: 'controllers.application.fullname',
 	toInError: false,
@@ -382,13 +401,12 @@ PMail.ComposeController = Ember.ObjectController.extend({
 				for(var i = 0; i<to.length; i++) {
 					to[i] = {address:to[i].trim()};
 				}
-				var body = Ember.$('#inputBody').cleditor()[0].doc.body;
 				controller.store.createRecord('sent', {
 					to:to,
 					from:[{name:controller.get('fullname'),address:controller.get('username')}],
 					subject:controller.get('model.subject'),
-					text:body.textContent,
-					html:body.innerHTML
+					text:CKEDITOR.instances.inputBody.document.getBody().$.innerText,
+					html:CKEDITOR.instances.inputBody.document.getBody().$.innerHTML
 				}).save().then(function(mail) {
 					controller.transitionToRoute('sent');
 				});
@@ -448,12 +466,21 @@ PMail.recipentListToString = function(list) {
 
 PMail.ClearSearchView = Ember.View.extend({
 	tagName: 'span',
-	classNames: ['input-icon', 'fui-cross'],
+	classNames: ['glyphicon','glyphicon-remove','input-group-addon'],
 	click: function(event) {
 		var controller = this.get('controller');
 		controller.set('searchTXT','');
 		controller.set('model',controller.store.all('inbox'));
 	}
+});
+
+PMail.HTMLView = Ember.View.extend({
+    tagName: 'iframe',
+    attributeBindings: ['src'],
+    src: function() {
+        var content = new Blob([this.get('html')], {type : 'text/html'});
+        return URL.createObjectURL(content);
+    }.property('controller.model')
 });
 
 PMail.Inbox = DS.Model.extend({

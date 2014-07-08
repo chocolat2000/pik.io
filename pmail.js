@@ -84,6 +84,10 @@ app
 			});
 		}
 	})
+	.get('/logout', function(req, res){
+        delete req.session.user;
+        res.send({status: 'OK'});
+    })
 	.get('/inboxes', function(req, res){
 		if(req.session.user) {
 			var params = {

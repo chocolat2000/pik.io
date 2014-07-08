@@ -72,7 +72,7 @@ module.exports.getMails = function(user,params,callback) {
 	var username = user.username;
 	var userSk = new Uint8Array(user.sk);
 
-    Mail.find({username:username,folder:folder}).limit(limit).exec(
+    Mail.find({username:username,folder:folder}).sort( { $natural: -1 } ).skip(firstElem).limit(limit).exec(
 		function(err, results) {
 			if(err) {
 				callback(err,{});
