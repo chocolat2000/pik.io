@@ -398,9 +398,9 @@ PMail.ComposeController = Ember.ObjectController.extend({
 			var to = controller.get('model.to');
 			if(to && to.length > 0 && /^[\040-\176]*$/.test(to)) {
 				to = to.split(',');
-				for(var i = 0; i<to.length; i++) {
-					to[i] = {address:to[i].trim()};
-				}
+				to.forEach(function(val, i) {
+					this[i] = {address:val.trim()};
+				},to);
 				controller.store.createRecord('sent', {
 					to:to,
 					from:[{name:controller.get('fullname'),address:controller.get('username')}],
@@ -476,11 +476,12 @@ PMail.ClearSearchView = Ember.View.extend({
 
 PMail.HTMLView = Ember.View.extend({
     tagName: 'iframe',
-    attributeBindings: ['src'],
+    attributeBindings: ['src','width'],
     src: function() {
         var content = new Blob([this.get('html')], {type : 'text/html'});
         return URL.createObjectURL(content);
-    }.property('controller.model')
+    }.property('controller.model'),
+    width: '100%'
 });
 
 PMail.Inbox = DS.Model.extend({

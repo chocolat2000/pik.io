@@ -152,20 +152,20 @@ module.exports.sendMail = function(user,mail,callback) {
 	var fullPMail = new RegExp('^(.+)@('+domains.join('|')+')$','i');
 	var isMail = new RegExp('^(.+)@(.+)$','i');
 
-	for(var i = 0; i<mail.to.length; i++) {
-		if(isMail.exec(mail.to[i].address)) {
-			var fullTest = fullPMail.exec(mail.to[i].address);
+	mail.to.forEach(function(oneMail) {
+		if(isMail.exec(oneMail.address)) {
+			var fullTest = fullPMail.exec(oneMail.address);
 			if(fullTest) {
 				pMailTo.push(fullTest[1]);
 			}
 			else {
-				extTo.push(mail.to[i].address);
+				extTo.push(oneMail.address);
 			}
 		}
 		else {
-			pMailTo.push(mail.to[i].address);
+			pMailTo.push(oneMail.address);
 		}
-	}
+	});
 
     if(pMailTo.length > 0) {
         User.find({username : {$in : pMailTo}},
@@ -190,14 +190,14 @@ module.exports.sendMail = function(user,mail,callback) {
     }
 
 	mail.envelope = {to:new Array()};
-	for(var i = 0; i<mail.to.length; i++) {
-		if(mail.to[i].name && mail.to[i].name.length>0) {
-			mail.envelope.to.push(mail.to[i].name+' <'+mail.to[i].address+'>');
+	mail.to.forEach(function(oneMail) {
+		if(oneMail.name && oneMail.name.length>0) {
+			mail.envelope.to.push(oneMail.name+' <'+oneMail.address+'>');
 		}
 		else {
-			mail.envelope.to.push(mail.to[i].address);
+			mail.envelope.to.push(oneMail.address);
 		}
-	}
+	});
 	mail.envelope.to = mail.envelope.to.join(', ');
 	if(mail.from[0].name && mail.from[0].name.length>0) {
 		mail.envelope.from = mail.from[0].name+' <'+mail.from[0].address+'>';
@@ -208,8 +208,8 @@ module.exports.sendMail = function(user,mail,callback) {
 	mail.from = mail.from[0].address;
 	var extMail = new mailcomposer();
 
-	for(var i = 0; i<extTo.length; i++) {
-		mail.to = extTo[i];
+	extTo.forEach(function(to) {
+		mail.to = to;
 		extMail.setMessageOption(mail);
 		mailPool.sendMail(extMail,function(err,message) {
 			if(err) {
@@ -217,7 +217,7 @@ module.exports.sendMail = function(user,mail,callback) {
 				console.log(message);
 			}
 		});
-	}
+	});
 };
 
 
@@ -231,7 +231,7 @@ var decodeMail = function(mail,recipentSk) {
 		decoded = nacl.crypto_box_open(nacl.from_hex(mail.body),nonce,senderPk,recipentSk);
 	}
 	catch(err) {
-		console.log(err);
+        console.log(err.stack);
 		decoded = null;
 	}
 
@@ -252,7 +252,7 @@ var encodeMail = function(mail,recipentPk) {
 
 	}
 	catch(err) {
-		console.log(err);
+        console.log(err.stack);
 		encoded = null;
 	}
 	return encoded;
@@ -264,7 +264,7 @@ var signMail = function(mail,senderSignSk) {
 		sign = nacl.to_hex(nacl.crypto_sign_detached(mail,senderSignSk));
 	}
 	catch(err) {
-		console.log(err);
+        console.log(err.stack);
 		sign = null;
 	}
 	return sign;
@@ -275,15 +275,17 @@ var checkSign = function(mail,senderSignPk) {
 }
 
 var decodeUserMeta = function(meta,password) {
-	var result = null;
-	try {
-		var nonce = nacl.from_hex(meta.nonce);
-		var value = nacl.from_hex(meta.value);
-		result = JSON.parse(nacl.decode_utf8(nacl.crypto_secretbox_open(value,nonce,password)));
-	}
-	catch (err) {
-		console.log(err);
-	}
+    var result = null;
+    if(meta && meta.nonce && meta.value) {
+    	try {
+		    var nonce = nacl.from_hex(meta.nonce);
+	    	var value = nacl.from_hex(meta.value);
+    		result = JSON.parse(nacl.decode_utf8(nacl.crypto_secretbox_open(value,nonce,password)));
+	    }
+	    catch (err) {
+            console.log(err.stack);
+	    }
+    }
 	return result;
 };
 
@@ -302,7 +304,7 @@ var encodeUserMeta = function(meta,password) {
 		}
 	}
 	catch (err) {
-		console.log(err);
+        console.log(err.stack);
 	}
 	return result;
 };
@@ -380,7 +382,7 @@ var newUser = function(password) {
 		};
 	}
 	catch(err) {
-		console.log(err);
+        console.log(err.stack);
 		res = null;
 	}
 	return res;
@@ -390,8 +392,8 @@ var loadUser = function(username, password, callback) {
 	var user = null;
 	var _password = password;
     User.findOne({username:username}, function(err,result) {
-		if(err) {
-			callback(err,{});
+		if(err || !result) {
+			callback('Bad password',{});
 		}
 		else {
 			try {
@@ -410,7 +412,7 @@ var loadUser = function(username, password, callback) {
 				callback(null,user);
 			}
 			catch (err) {
-				console.log(err);
+                console.log(err.stack);
 				callback('Bad password',{});
 			}
 		}
